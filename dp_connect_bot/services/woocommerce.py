@@ -6,7 +6,7 @@ import re
 import requests
 from requests.auth import HTTPBasicAuth
 
-from dp_connect_bot.config import WOOCOMMERCE_URL, WC_CONSUMER_KEY, WC_CONSUMER_SECRET, log
+from dp_connect_bot.config import WOOCOMMERCE_URL, WC_CONSUMER_KEY, WC_CONSUMER_SECRET, WP_BOT_SECRET, log
 
 
 class WooCommerceClient:
@@ -201,6 +201,42 @@ class WooCommerceClient:
     def get_address_edit_url() -> str:
         """Returns the WooCommerce address edit URL."""
         return "https://dpconnect.de/mein-konto/edit-address/"
+
+    def send_new_password(self, email: str) -> dict:
+        """Generiert ein neues Passwort und sendet es per CI-Mail an den Kunden.
+
+        Ruft den WordPress REST Endpoint /dp/v1/bot-reset-password auf.
+        Returns dict with: success, message (or error)
+        """
+        email = email.strip().lower()
+        url = f"{WOOCOMMERCE_URL}/wp-json/dp/v1/bot-reset-password"
+
+        try:
+            resp = requests.post(
+                url,
+                json={"email": email},
+                headers={"X-Bot-Secret": WP_BOT_SECRET, "Content-Type": "application/json"},
+                timeout=15,
+            )
+
+            data = resp.json()
+
+            if resp.status_code == 200 and data.get("success"):
+                return {
+                    "success": True,
+                    "message": "Neues Passwort wurde generiert und per E-Mail versendet.",
+                    "mail_sent": data.get("mail_sent", False),
+                }
+            elif resp.status_code == 404:
+                return {"success": False, "error": "Kein Account mit dieser E-Mail gefunden."}
+            elif resp.status_code == 400:
+                return {"success": False, "error": data.get("error", "Ungueltige E-Mail-Adresse.")}
+            else:
+                return {"success": False, "error": data.get("error", "Unbekannter Fehler.")}
+
+        except Exception as e:
+            log.error(f"WP bot-reset-password error: {e}")
+            return {"success": False, "error": "Konnte den Password-Reset gerade nicht durchfuehren."}
 
     def _format_order(self, order) -> dict:
         """Format a WC order into a clean dict for Claude."""

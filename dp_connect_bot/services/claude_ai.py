@@ -201,6 +201,20 @@ SUPPORT_TOOLS = [
         }
     },
     {
+        "name": "send_new_password",
+        "description": "Generiert ein neues Passwort fuer einen registrierten Kunden und sendet es per E-Mail im DP Connect Design. Nutze dieses Tool nur wenn der Kunde ausdruecklich ein neues Passwort per E-Mail erhalten moechte (nicht fuer Magic Login).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "description": "E-Mail-Adresse des Kunden"
+                }
+            },
+            "required": ["email"]
+        }
+    },
+    {
         "name": "escalate_to_human",
         "description": "Leitet das Gespraech an einen menschlichen Mitarbeiter weiter. Nutze dieses Tool wenn du das Problem nicht selbst loesen kannst oder der Kunde explizit einen Menschen verlangt.",
         "input_schema": {
@@ -250,6 +264,10 @@ def _execute_support_tool(tool_name, tool_input):
             if result:
                 return {"success": True, "orders": result, "count": len(result)}
             return {"success": True, "orders": [], "count": 0, "message": "Keine Bestellungen mit dieser E-Mail gefunden."}
+
+        elif tool_name == "send_new_password":
+            result = wc_client.send_new_password(tool_input["email"])
+            return result
 
         elif tool_name == "escalate_to_human":
             # This is handled specially – we just return success and set a flag

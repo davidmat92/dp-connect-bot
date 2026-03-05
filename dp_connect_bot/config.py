@@ -21,6 +21,7 @@ AIRTABLE_VIEW_ALL = os.environ.get("AIRTABLE_VIEW_ALL", "")
 WOOCOMMERCE_URL = os.environ.get("WOOCOMMERCE_URL", "https://dpconnect.de")
 WC_CONSUMER_KEY = os.environ.get("WC_CONSUMER_KEY", "")
 WC_CONSUMER_SECRET = os.environ.get("WC_CONSUMER_SECRET", "")
+WP_BOT_SECRET = os.environ.get("WP_BOT_SECRET", "")
 
 # WhatsApp Config
 WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "")
