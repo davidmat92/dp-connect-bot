@@ -58,6 +58,8 @@ ALIASES = {
     "elbar": "elf bar", "elfar": "elf bar", "els bar": "elf bar",
     "flerber": "flerbar", "flarbar": "flerbar", "flair bar": "flerbar",
     "lost mery": "lost mary", "los mary": "lost mary",
+    "buds": "budz", "bud": "budz",
+    "sheesh budz": "sheesh", "sheesh buds": "sheesh",
 }
 
 # Deutsche Geschmacksnamen -> Englische Suchbegriffe
@@ -262,9 +264,31 @@ def extract_search_terms(text):
             seen.add(t)
             unique.append(t)
 
-    if not unique and len(text.split()) <= 6:
-        greetings = CONFIRM_ALL | {"hi", "hallo", "hey", "moin", "servus", "na", "yo", "moinsen"}
-        if not set(text_lower.split()).issubset(greetings):
-            unique = [text_lower]
+    if not unique:
+        # Strip filler/greeting words and use remaining as product search
+        _filler = {
+            "brauche", "brauch", "suche", "such", "möchte", "hätte", "will",
+            "bitte", "gerne", "insgesamt", "gesamt", "davon", "was", "wie",
+            "kannst", "können", "könntest", "du", "mir", "mich", "denn", "mal",
+            "auch", "noch", "dazu", "doch", "einfach", "gibt", "hast", "habt",
+            "hab", "habe", "den", "die", "das", "der", "dem", "des", "ein",
+            "eine", "einen", "einer", "einem", "nicht", "kein", "keine",
+            "keinen", "guten", "gute", "guter", "gutes", "empfehlen",
+            "empfehlung", "bestellen", "bestell", "pack", "nimm", "gib",
+            "zeig", "mein", "meine", "meinen", "meiner", "über", "fuer",
+            "für", "von", "bei", "aus", "nach", "jetzt", "gleich", "schnell",
+            "nochmal", "wäre", "waere", "gut", "schon", "dann", "bräuchte",
+        }
+        _greetings = CONFIRM_ALL | {"hi", "hallo", "hey", "moin", "servus", "na", "yo", "moinsen"}
+        _skip = _filler | _greetings
+
+        clean = text_lower.replace(",", " ").replace("?", " ").replace("!", " ").replace(".", " ")
+        meaningful = [
+            w for w in clean.split()
+            if w not in _skip and len(w) >= 2
+            and not w.replace(".", "").replace(",", "").isdigit()
+        ]
+        if meaningful:
+            unique = [" ".join(meaningful)]
 
     return unique
