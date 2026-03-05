@@ -132,7 +132,7 @@ def handle_login_email(session, text):
             keyboards=[Keyboard(
                 type=KeyboardType.LOGIN_OPTIONS,
                 buttons=[
-                    Button(text="🔑 Magic Login (empfohlen)", callback_data="login_magic"),
+                    Button(text="🔑 Login-Link (empfohlen)", callback_data="login_magic"),
                     Button(text="📧 Neues Passwort senden", callback_data="login_newpw"),
                 ],
             )],

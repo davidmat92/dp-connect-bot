@@ -202,7 +202,7 @@ SUPPORT_TOOLS = [
     },
     {
         "name": "send_new_password",
-        "description": "Generiert ein neues Passwort fuer einen registrierten Kunden und sendet es per E-Mail im DP Connect Design. Nutze dieses Tool nur wenn der Kunde ausdruecklich ein neues Passwort per E-Mail erhalten moechte (nicht fuer Magic Login).",
+        "description": "Generiert ein neues Passwort fuer einen registrierten Kunden und sendet es per E-Mail im DP Connect Design. Nutze dieses Tool nur wenn der Kunde ausdruecklich ein neues Passwort per E-Mail erhalten moechte (nicht fuer Login-Link).",
         "input_schema": {
             "type": "object",
             "properties": {

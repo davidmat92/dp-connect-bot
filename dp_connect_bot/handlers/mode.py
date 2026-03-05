@@ -41,6 +41,16 @@ def detect_mode(session, text, channel):
 
     Side effect: sets session["mode"] if detected.
     """
+    # Handle "choosing" state: user typed text instead of clicking a button
+    if session.get("mode") == "choosing":
+        lower = text.strip().lower()
+        if any(kw in lower for kw in SUPPORT_KEYWORDS):
+            session["mode"] = "support"
+            session["support_step"] = None
+        else:
+            session["mode"] = "order"
+        return None  # Let the message pass through to the detected handler
+
     if session.get("mode") is not None:
         return None
 

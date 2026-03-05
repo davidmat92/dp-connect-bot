@@ -20,6 +20,8 @@ def handle_start(session):
     session["hints_shown"] = {}
     session["support_step"] = None
     session["human_mode"] = False
+    session["login_step"] = None
+    session["login_email"] = None
 
     return BotResponse(
         text=(

@@ -127,11 +127,17 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
         session_manager.save(chat_id, session)
         return wa_mode
 
-    # --- Login-Hilfe Flow (email step) ---
-    if session.get("mode") == "login_help" and session.get("login_step") == "ask_email":
-        resp = handle_login_email(session, text)
+    # --- Login-Hilfe Flow ---
+    if session.get("mode") == "login_help":
+        if session.get("login_step") == "ask_email":
+            resp = handle_login_email(session, text)
+            session_manager.save(chat_id, session)
+            return resp
+        # User typed text during button-selection step → remind them
         session_manager.save(chat_id, session)
-        return resp
+        return BotResponse(
+            text="Bitte wähle eine der Optionen oben oder schreib /start für ein neues Gespräch. 👆"
+        )
 
     # --- Support flow (legacy step handler – now always returns None) ---
     support_resp = handle_support_step(session, text, channel)
@@ -590,14 +596,14 @@ def _handle_callback_request(session, chat_id, callback_data):
 # ============================================================
 
 def _handle_login_magic(session, chat_id):
-    """Handle Magic Login button click."""
+    """Handle Login-Link button click."""
     session["mode"] = None
     session["login_step"] = None
     session_manager.save(chat_id, session)
 
     return BotResponse(
         text=(
-            "🔑 *Magic Login*\n\n"
+            "🔑 *Login-Link*\n\n"
             "Klicke auf diesen Link und gib deine E-Mail-Adresse ein:\n"
             "👉 https://dpconnect.de/anmelden/?action=magic_login\n\n"
             "Du bekommst dann einen Einmal-Link per E-Mail, mit dem du dich "
@@ -605,7 +611,7 @@ def _handle_login_magic(session, chat_id):
             "Danach kannst du in deinem Konto ein neues Passwort setzen."
         ),
         keyboards=[Keyboard(type=KeyboardType.MODE_CHOICE)],
-        answer_callback_text="🔑 Magic Login!",
+        answer_callback_text="🔑 Login-Link!",
     )
 
 
@@ -645,7 +651,7 @@ def _handle_login_newpw(session, chat_id):
         return BotResponse(
             text=(
                 f"❌ Das hat leider nicht geklappt: {error}\n\n"
-                "Versuch es alternativ mit dem Magic Login:\n"
+                "Versuch es alternativ mit dem Login-Link:\n"
                 "👉 https://dpconnect.de/anmelden/?action=magic_login\n\n"
                 "Oder kontaktiere uns: +49 221 650 878 78"
             ),
