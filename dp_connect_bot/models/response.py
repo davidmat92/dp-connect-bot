@@ -14,6 +14,7 @@ class KeyboardType(Enum):
     MODE_CHOICE = "mode_choice"
     CATEGORIES = "categories"
     REORDER_CONFIRM = "reorder_confirm"
+    LOGIN_OPTIONS = "login_options"
 
 
 @dataclass

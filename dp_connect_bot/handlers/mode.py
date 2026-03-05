@@ -68,23 +68,13 @@ def detect_mode(session, text, channel):
         return None  # Let the message pass through to normal handling
 
     if session.get("message_count", 0) <= 1:
-        # First message, no product signal → show mode choice
+        # First message, no product signal → show mode choice (all channels get buttons)
         name = session.get("customer_name", "")
-        if channel == "whatsapp":
-            session["mode"] = "choosing"
-            return BotResponse(
-                text=(
-                    f"Hey{' ' + name if name else ''}! 👋\n\n"
-                    f"Wie kann ich dir helfen?\n\n"
-                    f"Schreib *1* für 🛒 *Bestellen*\n"
-                    f"Schreib *2* für 🎧 *Kundenservice*{BETA_HINT}"
-                )
-            )
-        else:
-            return BotResponse(
-                text=f"Hey{' ' + name if name else ''}! 👋\n\nWie kann ich dir helfen?",
-                keyboards=[Keyboard(type=KeyboardType.MODE_CHOICE)],
-            )
+        session["mode"] = "choosing"
+        return BotResponse(
+            text=f"Hey{' ' + name if name else ''}! 👋\n\nWie kann ich dir helfen?{BETA_HINT}",
+            keyboards=[Keyboard(type=KeyboardType.MODE_CHOICE)],
+        )
 
     # Subsequent messages without mode → assume order
     session["mode"] = "order"
@@ -92,7 +82,7 @@ def detect_mode(session, text, channel):
 
 
 def handle_whatsapp_mode_choice(session, text):
-    """Handle WhatsApp text-based mode selection (1 or 2).
+    """Handle WhatsApp text-based mode selection (1, 2 or 3) as fallback.
 
     Returns BotResponse or None if not a mode choice.
     """
@@ -121,6 +111,15 @@ def handle_whatsapp_mode_choice(session, text):
                 "Klar, wie kann ich dir helfen? Beschreib mir einfach dein Anliegen – "
                 "ich kann z.B. Bestellungen nachschlagen, Account-Probleme loesen "
                 "oder dich an Davides Team weiterleiten. ✍️"
+            )
+        )
+    elif stripped == "3":
+        session["mode"] = "login_help"
+        session["login_step"] = "ask_email"
+        return BotResponse(
+            text=(
+                "🔑 *Login-Hilfe*\n\n"
+                "Klar! Was ist deine E-Mail-Adresse, mit der du registriert bist? ✉️"
             )
         )
 

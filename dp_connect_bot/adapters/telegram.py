@@ -126,8 +126,18 @@ class TelegramAdapter(ChannelAdapter):
             elif kb.type == KeyboardType.MODE_CHOICE:
                 all_buttons.append([
                     {"text": "🛒 Bestellen", "callback_data": "mode_order"},
+                ])
+                all_buttons.append([
+                    {"text": "🔑 Login-Probleme", "callback_data": "mode_login"},
+                ])
+                all_buttons.append([
                     {"text": "📞 Kundenservice", "callback_data": "mode_support"},
                 ])
+            elif kb.type == KeyboardType.LOGIN_OPTIONS:
+                for btn in kb.buttons:
+                    all_buttons.append([
+                        {"text": btn.text, "callback_data": btn.callback_data}
+                    ])
             elif kb.type == KeyboardType.CATEGORIES:
                 for btn in kb.buttons:
                     all_buttons.append([

@@ -47,7 +47,14 @@ class WhatsAppAdapter(ChannelAdapter):
             elif kb.type == KeyboardType.MODE_CHOICE:
                 buttons = [
                     {"label": "🛒 Bestellen", "callback": "mode_order"},
+                    {"label": "🔑 Login", "callback": "mode_login"},
                     {"label": "📞 Service", "callback": "mode_support"},
+                ]
+                break
+            elif kb.type == KeyboardType.LOGIN_OPTIONS:
+                buttons = [
+                    {"label": btn.text[:20], "callback": btn.callback_data}
+                    for btn in kb.buttons[:3]
                 ]
                 break
             elif kb.type == KeyboardType.REORDER_CONFIRM:

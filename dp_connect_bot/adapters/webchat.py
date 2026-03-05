@@ -78,7 +78,16 @@ class WebchatAdapter(ChannelAdapter):
                 "type": "mode_choice",
                 "buttons": [
                     {"text": "🛒 Bestellen", "callback_data": "mode_order"},
+                    {"text": "🔑 Login-Probleme", "callback_data": "mode_login"},
                     {"text": "📞 Kundenservice", "callback_data": "mode_support"},
+                ],
+            }
+        elif kb.type == KeyboardType.LOGIN_OPTIONS:
+            return {
+                "type": "login_options",
+                "buttons": [
+                    {"text": btn.text, "callback_data": btn.callback_data}
+                    for btn in kb.buttons
                 ],
             }
         elif kb.type == KeyboardType.CATEGORIES:

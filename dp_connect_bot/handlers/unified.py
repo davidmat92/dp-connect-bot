@@ -25,7 +25,7 @@ from dp_connect_bot.utils.hints import get_hint
 from dp_connect_bot.handlers.commands import (
     handle_start, handle_cart_display, handle_reset, handle_help,
 )
-from dp_connect_bot.handlers.support import handle_support_step, handle_support_message
+from dp_connect_bot.handlers.support import handle_support_step, handle_support_message, handle_login_email
 from dp_connect_bot.handlers.cart import (
     handle_checkout, handle_cart_view, handle_reorder,
     handle_browse, handle_pending_quantity,
@@ -100,6 +100,14 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
     if stripped.startswith("/hilfe") or stripped.startswith("/help"):
         return handle_help()
 
+    # --- Callback-like strings from WhatsApp/channel button clicks ---
+    # WhatsApp sends button IDs as regular text, route them to callback handler
+    _CB_PREFIXES = ("mode_", "sel_", "qty_", "custom_", "cat_", "reorder_", "cb_", "login_", "done_")
+    if stripped.startswith(_CB_PREFIXES) or stripped == "noop":
+        resp = unified_handle_callback(chat_id, stripped, channel=channel)
+        session_manager.save(chat_id, session)
+        return resp
+
     # --- Pending selection (manual quantity input) ---
     pending = session.get("pending_selection")
     if pending and stripped.isdigit():
@@ -113,11 +121,17 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
         session_manager.save(chat_id, session)
         return mode_response
 
-    # WhatsApp mode choice ("1" or "2")
+    # WhatsApp mode choice ("1", "2" or "3" as text fallback)
     wa_mode = handle_whatsapp_mode_choice(session, text)
     if wa_mode:
         session_manager.save(chat_id, session)
         return wa_mode
+
+    # --- Login-Hilfe Flow (email step) ---
+    if session.get("mode") == "login_help" and session.get("login_step") == "ask_email":
+        resp = handle_login_email(session, text)
+        session_manager.save(chat_id, session)
+        return resp
 
     # --- Support flow (legacy step handler – now always returns None) ---
     support_resp = handle_support_step(session, text, channel)
@@ -242,6 +256,47 @@ def unified_handle_callback(chat_id, callback_data, channel="telegram"):
                 "oder dich an Davides Team weiterleiten. ✍️"
             ),
             answer_callback_text="🎧 Kundenservice!",
+        )
+
+    elif callback_data == "mode_login":
+        session["mode"] = "login_help"
+        session["login_step"] = "ask_email"
+        session_manager.save(chat_id, session)
+        return BotResponse(
+            text=(
+                "🔑 *Login-Hilfe*\n\n"
+                "Klar! Was ist deine E-Mail-Adresse, mit der du registriert bist? ✉️"
+            ),
+            answer_callback_text="🔑 Login-Hilfe!",
+        )
+
+    elif callback_data == "login_magic":
+        return _handle_login_magic(session, chat_id)
+
+    elif callback_data == "login_newpw":
+        return _handle_login_newpw(session, chat_id)
+
+    elif callback_data == "login_register":
+        session["mode"] = None
+        session["login_step"] = None
+        session_manager.save(chat_id, session)
+        return BotResponse(
+            text=(
+                "📝 *Jetzt registrieren!*\n\n"
+                "Erstelle dir hier deinen Account:\n"
+                "👉 https://dpconnect.de/kunde-werden/\n\n"
+                "Nach der Registrierung bekommst du deine Zugangsdaten per E-Mail. 📧"
+            ),
+            keyboards=[Keyboard(type=KeyboardType.MODE_CHOICE)],
+            answer_callback_text="📝 Registrierung!",
+        )
+
+    elif callback_data == "login_retry":
+        session["login_step"] = "ask_email"
+        session_manager.save(chat_id, session)
+        return BotResponse(
+            text="Kein Problem! Gib mir eine andere E-Mail-Adresse: ✉️",
+            answer_callback_text="🔄 Nochmal versuchen",
         )
 
     elif callback_data.startswith("sel_"):
@@ -528,3 +583,72 @@ def _handle_callback_request(session, chat_id, callback_data):
         )
 
     return BotResponse(is_silent=True)
+
+
+# ============================================================
+# LOGIN FLOW HELPERS
+# ============================================================
+
+def _handle_login_magic(session, chat_id):
+    """Handle Magic Login button click."""
+    session["mode"] = None
+    session["login_step"] = None
+    session_manager.save(chat_id, session)
+
+    return BotResponse(
+        text=(
+            "🔑 *Magic Login*\n\n"
+            "Klicke auf diesen Link und gib deine E-Mail-Adresse ein:\n"
+            "👉 https://dpconnect.de/anmelden/?action=magic_login\n\n"
+            "Du bekommst dann einen Einmal-Link per E-Mail, mit dem du dich "
+            "direkt einloggen kannst – ganz ohne Passwort! 🪄\n\n"
+            "Danach kannst du in deinem Konto ein neues Passwort setzen."
+        ),
+        keyboards=[Keyboard(type=KeyboardType.MODE_CHOICE)],
+        answer_callback_text="🔑 Magic Login!",
+    )
+
+
+def _handle_login_newpw(session, chat_id):
+    """Handle 'Neues Passwort' button click."""
+    from dp_connect_bot.services.woocommerce import wc_client
+
+    email = session.get("login_email", "")
+    if not email:
+        session_manager.save(chat_id, session)
+        return BotResponse(
+            text="Da ist was schiefgelaufen. Versuch's nochmal mit /start 🔄",
+            answer_callback_text="❌ Fehler",
+        )
+
+    result = wc_client.send_new_password(email)
+
+    session["mode"] = None
+    session["login_step"] = None
+    session_manager.save(chat_id, session)
+
+    if result.get("success"):
+        return BotResponse(
+            text=(
+                "✅ *Neues Passwort versendet!*\n\n"
+                f"Ein neues Passwort wurde an *{email}* gesendet. "
+                "Check deine E-Mails (auch den Spam-Ordner). 📧\n\n"
+                "Du kannst dich dann hier einloggen:\n"
+                "👉 https://dpconnect.de/anmelden/\n\n"
+                "Tipp: Aendere das Passwort nach dem Login in deinem Kontobereich! 🔒"
+            ),
+            keyboards=[Keyboard(type=KeyboardType.MODE_CHOICE)],
+            answer_callback_text="✅ Passwort gesendet!",
+        )
+    else:
+        error = result.get("error", "Unbekannter Fehler")
+        return BotResponse(
+            text=(
+                f"❌ Das hat leider nicht geklappt: {error}\n\n"
+                "Versuch es alternativ mit dem Magic Login:\n"
+                "👉 https://dpconnect.de/anmelden/?action=magic_login\n\n"
+                "Oder kontaktiere uns: +49 221 650 878 78"
+            ),
+            keyboards=[Keyboard(type=KeyboardType.MODE_CHOICE)],
+            answer_callback_text="❌ Fehler",
+        )
