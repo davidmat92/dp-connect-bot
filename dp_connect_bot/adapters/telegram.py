@@ -91,9 +91,12 @@ class TelegramAdapter(ChannelAdapter):
             try:
                 resp = requests.post(f"{TELEGRAM_API}/sendMessage", json=payload, timeout=10)
                 if not resp.ok:
-                    log.warning(f"Telegram send failed: {resp.text}")
-                    payload["parse_mode"] = None
-                    requests.post(f"{TELEGRAM_API}/sendMessage", json=payload, timeout=10)
+                    log.warning(f"Telegram send failed (Markdown): {resp.text}")
+                    # Retry without parse_mode (plain text fallback)
+                    payload.pop("parse_mode", None)
+                    resp2 = requests.post(f"{TELEGRAM_API}/sendMessage", json=payload, timeout=10)
+                    if not resp2.ok:
+                        log.error(f"Telegram send failed (plain): {resp2.text}")
             except Exception as e:
                 log.error(f"Telegram send error: {e}")
 
