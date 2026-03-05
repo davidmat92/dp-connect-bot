@@ -25,7 +25,7 @@ from dp_connect_bot.utils.hints import get_hint
 from dp_connect_bot.handlers.commands import (
     handle_start, handle_cart_display, handle_reset, handle_help,
 )
-from dp_connect_bot.handlers.support import handle_support_step
+from dp_connect_bot.handlers.support import handle_support_step, handle_support_message
 from dp_connect_bot.handlers.cart import (
     handle_checkout, handle_cart_view, handle_reorder,
     handle_browse, handle_pending_quantity,
@@ -119,11 +119,17 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
         session_manager.save(chat_id, session)
         return wa_mode
 
-    # --- Support flow ---
+    # --- Support flow (legacy step handler – now always returns None) ---
     support_resp = handle_support_step(session, text, channel)
     if support_resp:
         session_manager.save(chat_id, session)
         return support_resp
+
+    # --- AI-First Support ---
+    if session.get("mode") == "support" and not session.get("human_mode"):
+        resp = handle_support_message(chat_id, text, session, channel)
+        session_manager.save(chat_id, session)
+        return resp
 
     # --- Human takeover ---
     if is_human_mode(session):
@@ -226,13 +232,14 @@ def unified_handle_callback(chat_id, callback_data, channel="telegram"):
 
     elif callback_data == "mode_support":
         session["mode"] = "support"
-        session["support_step"] = "awaiting_issue"
+        session["support_step"] = None
         session_manager.save(chat_id, session)
         return BotResponse(
             text=(
                 "🎧 *Kundenservice*\n\n"
-                "Klar, ich leite dich weiter! Beschreib mir kurz dein Anliegen, "
-                "damit Davides Team direkt Bescheid weiß. ✍️"
+                "Klar, wie kann ich dir helfen? Beschreib mir einfach dein Anliegen – "
+                "ich kann z.B. Bestellungen nachschlagen, Account-Probleme loesen "
+                "oder dich an Davides Team weiterleiten. ✍️"
             ),
             answer_callback_text="🎧 Kundenservice!",
         )
@@ -506,14 +513,18 @@ def _handle_callback_request(session, chat_id, callback_data):
             answer_callback_text="✅ Weitergeleitet!",
         )
     elif contact_type in ("email", "phone", "call"):
-        session["support_step"] = "awaiting_issue"
-        session["support_contact_type"] = contact_type
+        session["mode"] = "support"
+        session["support_step"] = None
         session_manager.save(chat_id, session)
         return BotResponse(
-            text="📧 Klar! Beschreib mir kurz dein Anliegen, damit Davides Team direkt Bescheid weiß. ✍️"
-            if contact_type == "email"
-            else "📞 Klar! Beschreib mir kurz dein Anliegen, damit Davides Team direkt Bescheid weiß. ✍️",
-            answer_callback_text="✅ Weitergeleitet!",
+            text=(
+                "📧 Klar! Beschreib mir dein Anliegen – ich versuche dir direkt zu helfen. "
+                "Falls noetig, leite ich dich an Davides Team weiter. ✍️"
+                if contact_type == "email"
+                else "📞 Klar! Beschreib mir dein Anliegen – ich versuche dir direkt zu helfen. "
+                "Falls noetig, leite ich dich an Davides Team weiter. ✍️"
+            ),
+            answer_callback_text="✅ Support aktiv!",
         )
 
     return BotResponse(is_silent=True)

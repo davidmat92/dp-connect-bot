@@ -18,6 +18,23 @@ PRODUCT_KEYWORDS = {
     "nochmal", "nachbestellen", "das gleiche", "wie letztes mal",
 }
 
+# Support-Signale fuer Smart Detection
+SUPPORT_KEYWORDS = {
+    "wo bleibt", "wo ist meine bestellung", "bestellung verfolgen",
+    "tracking", "sendungsverfolgung", "lieferstatus",
+    "einloggen", "login", "anmelden", "kann mich nicht einloggen",
+    "passwort", "kennwort", "registrierung", "registrieren",
+    "keine zugangsdaten", "zugangsdaten",
+    "rechnung", "invoice", "rechnungsadresse",
+    "lieferadresse", "adresse ändern", "adresse aendern",
+    "reklamation", "retoure", "rücksendung", "ruecksendung",
+    "defekt", "kaputt", "beschaedigt", "beschädigt",
+    "kundenservice", "support", "hilfe", "problem",
+    "kundennummer", "mein konto", "mein account",
+    "mit davide sprechen", "mit jemandem sprechen",
+    "ich will einen menschen", "mitarbeiter",
+}
+
 
 def detect_mode(session, text, channel):
     """Smart mode detection. Returns BotResponse if mode gate should block, else None.
@@ -31,6 +48,13 @@ def detect_mode(session, text, channel):
         return None
 
     lower = text.strip().lower()
+
+    # Detect support signals (check first – support takes priority over order)
+    support_signals = any(kw in lower for kw in SUPPORT_KEYWORDS)
+    if support_signals:
+        session["mode"] = "support"
+        session["support_step"] = None
+        return None  # Let the message pass through to support handling
 
     # Detect product/order signals
     order_signals = any(kw in lower for kw in PRODUCT_KEYWORDS)
@@ -90,12 +114,13 @@ def handle_whatsapp_mode_choice(session, text):
         )
     elif stripped == "2":
         session["mode"] = "support"
-        session["support_step"] = "awaiting_issue"
+        session["support_step"] = None
         return BotResponse(
             text=(
                 "🎧 *Kundenservice*\n\n"
-                "Klar, ich leite dich weiter! Beschreib mir kurz dein Anliegen, "
-                "damit Davides Team direkt Bescheid weiß. ✍️"
+                "Klar, wie kann ich dir helfen? Beschreib mir einfach dein Anliegen – "
+                "ich kann z.B. Bestellungen nachschlagen, Account-Probleme loesen "
+                "oder dich an Davides Team weiterleiten. ✍️"
             )
         )
 
