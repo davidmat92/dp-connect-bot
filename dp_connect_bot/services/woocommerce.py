@@ -183,14 +183,19 @@ class WooCommerceClient:
         return result
 
     @staticmethod
-    def get_password_reset_url() -> str:
-        """Returns the WooCommerce password reset URL."""
-        return "https://dpconnect.de/mein-konto/lost-password/"
+    def get_magic_login_url() -> str:
+        """Returns the passwordless magic login URL."""
+        return "https://dpconnect.de/anmelden/?action=magic_login"
 
     @staticmethod
-    def get_account_url() -> str:
-        """Returns the WooCommerce account URL."""
-        return "https://dpconnect.de/mein-konto/"
+    def get_login_url() -> str:
+        """Returns the login URL."""
+        return "https://dpconnect.de/anmelden/"
+
+    @staticmethod
+    def get_register_url() -> str:
+        """Returns the registration URL for new customers."""
+        return "https://dpconnect.de/kunde-werden/"
 
     @staticmethod
     def get_address_edit_url() -> str:
