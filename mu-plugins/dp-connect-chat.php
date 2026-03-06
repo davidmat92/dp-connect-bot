@@ -11,8 +11,8 @@ if (!defined('ABSPATH')) exit;
 // ============================================================
 define('DPC_API', 'https://bot-dpconnect.pythonanywhere.com');
 define('DPC_LOGO', '/wp-content/uploads/2026/01/logo_dpconnect.webp');
-define('DPC_AUTO_WIDGET', false);
 define('DPC_BETA_MODE', true);
+// Auto-widget & order toggle are now stored in wp_options (managed via DP Bot admin settings)
 
 // ============================================================
 // 🎨 FARBEN
@@ -478,11 +478,13 @@ function dpc_embed_shortcode($atts) {
       <div class="dpc-wel-s">Willkommen bei DP Connect. Wie können wir dir helfen?</div>
       <?php if (DPC_BETA_MODE): ?><div class="dpc-beta">* Dieser Bot befindet sich in einer frühen Testphase. Fehler bitte entschuldigen! Auf dpconnect.de kannst du ganz normal stöbern und bestellen.</div><?php endif; ?>
       <div class="dpc-mode-btns">
+        <?php if (get_option('dpc_order_enabled', true)): ?>
         <button class="dpc-mode-btn" onclick="DPE.setMode('order',this)">
           <span class="dpc-mode-ico">🛒</span>
           <span class="dpc-mode-t">Bestellen</span>
           <span class="dpc-mode-s">Produkte suchen &amp; in den Warenkorb</span>
         </button>
+        <?php endif; ?>
         <button class="dpc-mode-btn" onclick="DPE.setMode('support',this)">
           <span class="dpc-mode-ico">🎧</span>
           <span class="dpc-mode-t">Kundenservice</span>
@@ -490,6 +492,7 @@ function dpc_embed_shortcode($atts) {
         </button>
       </div>
     </div>
+    <?php if (get_option('dpc_order_enabled', true)): ?>
     <!-- Bestell-Vorschläge (initial hidden, shown after mode=order) -->
     <div class="dpc-wel-card dpc-order-hints" id="dpe-hints" style="display:none;margin-top:10px">
       <div class="dpc-wel-s">Was suchst du?</div>
@@ -502,6 +505,7 @@ function dpc_embed_shortcode($atts) {
         <button class="dpc-wel-btn" onclick="DPE.quickSend('Was habt ihr an Snacks und Drinks?')">🍬 Snacks &amp; Drinks</button>
       </div>
     </div>
+    <?php endif; ?>
   </div>
   <div class="dpc-msgs" id="dpe-m"></div>
   <div class="dpc-ct" id="dpe-c">
@@ -588,16 +592,19 @@ function dpc_widget_shortcode($atts) {
       <div class="dpc-wel-s">Wie können wir dir helfen?</div>
       <?php if (DPC_BETA_MODE): ?><div class="dpc-beta">* Dieser Bot befindet sich in einer frühen Testphase. Fehler bitte entschuldigen! Auf dpconnect.de kannst du ganz normal stöbern und bestellen.</div><?php endif; ?>
       <div class="dpc-mode-btns">
+        <?php if (get_option('dpc_order_enabled', true)): ?>
         <button class="dpc-mode-btn" onclick="DPW.setMode('order',this)">
           <span class="dpc-mode-ico">🛒</span>
           <div><span class="dpc-mode-t">Bestellen</span><span class="dpc-mode-s">Produkte suchen &amp; in den Warenkorb</span></div>
         </button>
+        <?php endif; ?>
         <button class="dpc-mode-btn" onclick="DPW.setMode('support',this)">
           <span class="dpc-mode-ico">🎧</span>
           <div><span class="dpc-mode-t">Kundenservice</span><span class="dpc-mode-s">Fragen, Retouren, Lieferstatus &amp; mehr</span></div>
         </button>
       </div>
     </div>
+    <?php if (get_option('dpc_order_enabled', true)): ?>
     <div class="dpc-wel-card dpc-order-hints" id="dpw-hints" style="display:none;margin-top:10px">
       <div class="dpc-wel-s">Was suchst du?</div>
       <div class="dpc-wel-btns">
@@ -609,6 +616,7 @@ function dpc_widget_shortcode($atts) {
         <button class="dpc-wel-btn" onclick="DPW.quickSend('Was habt ihr an Snacks und Drinks?')">🍬 Snacks &amp; Drinks</button>
       </div>
     </div>
+    <?php endif; ?>
   </div>
   <div class="dpc-msgs" id="dpw-m"></div>
   <div class="dpc-ct" id="dpw-c">
@@ -710,7 +718,7 @@ function dpc_support_shortcode($atts) {
 }
 add_shortcode('dp_chat_support', 'dpc_support_shortcode');
 
-if (DPC_AUTO_WIDGET) {
+if (get_option('dpc_auto_widget', false)) {
     add_action('wp_footer', function() { if (!is_admin()) echo do_shortcode('[dp_chat_widget]'); });
 }
 

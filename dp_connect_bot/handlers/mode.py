@@ -41,14 +41,21 @@ def detect_mode(session, text, channel):
 
     Side effect: sets session["mode"] if detected.
     """
+    from dp_connect_bot.services.bot_config import load_bot_config
+    order_enabled = load_bot_config().get("order_enabled", True)
+
     # Handle "choosing" state: user typed text instead of clicking a button
     if session.get("mode") == "choosing":
         lower = text.strip().lower()
         if any(kw in lower for kw in SUPPORT_KEYWORDS):
             session["mode"] = "support"
             session["support_step"] = None
-        else:
+        elif order_enabled:
             session["mode"] = "order"
+        else:
+            # Order disabled → fall into support
+            session["mode"] = "support"
+            session["support_step"] = None
         return None  # Let the message pass through to the detected handler
 
     if session.get("mode") is not None:
@@ -74,8 +81,13 @@ def detect_mode(session, text, channel):
         order_signals = True
 
     if order_signals:
-        session["mode"] = "order"
-        return None  # Let the message pass through to normal handling
+        if order_enabled:
+            session["mode"] = "order"
+        else:
+            # Order disabled → route to support instead
+            session["mode"] = "support"
+            session["support_step"] = None
+        return None
 
     if session.get("message_count", 0) <= 1:
         # First message, no product signal → show mode choice (all channels get buttons)
@@ -86,8 +98,12 @@ def detect_mode(session, text, channel):
             keyboards=[Keyboard(type=KeyboardType.MODE_CHOICE)],
         )
 
-    # Subsequent messages without mode → assume order
-    session["mode"] = "order"
+    # Subsequent messages without mode → assume order (if enabled) or support
+    if order_enabled:
+        session["mode"] = "order"
+    else:
+        session["mode"] = "support"
+        session["support_step"] = None
     return None
 
 
@@ -99,8 +115,11 @@ def handle_whatsapp_mode_choice(session, text):
     if session.get("mode") != "choosing":
         return None
 
+    from dp_connect_bot.services.bot_config import load_bot_config
+    order_enabled = load_bot_config().get("order_enabled", True)
+
     stripped = text.strip()
-    if stripped == "1":
+    if stripped == "1" and order_enabled:
         session["mode"] = "order"
         voice_hint = get_hint(session, "voice_available")
         return BotResponse(
@@ -110,6 +129,17 @@ def handle_whatsapp_mode_choice(session, text):
                 "• \"Elf Bar 800\"\n"
                 "• \"50 Cherry und 30 Peach\"\n\n"
                 f"Was darf's sein? 🚀{voice_hint}"
+            )
+        )
+    elif stripped == "1" and not order_enabled:
+        # Order disabled – treat as support
+        session["mode"] = "support"
+        session["support_step"] = None
+        return BotResponse(
+            text=(
+                "🎧 *Kundenservice*\n\n"
+                "Der Bestellassistent ist aktuell nicht verfügbar. "
+                "Wie kann ich dir sonst helfen? ✍️"
             )
         )
     elif stripped == "2":

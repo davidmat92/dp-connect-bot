@@ -14,6 +14,7 @@ add_action('admin_menu', function() {
     add_submenu_page('dp-bot', 'Live-Gespräche', '💬 Live', 'manage_woocommerce', 'dp-bot', 'dpba_page_live');
     add_submenu_page('dp-bot', 'Statistiken', '📊 Statistiken', 'manage_woocommerce', 'dp-bot-stats', 'dpba_page_stats');
     add_submenu_page('dp-bot', 'Suche', '🔍 Suche', 'manage_woocommerce', 'dp-bot-search', 'dpba_page_search');
+    add_submenu_page('dp-bot', 'Einstellungen', '⚙️ Einstellungen', 'manage_woocommerce', 'dp-bot-settings', 'dpba_page_settings');
 });
 
 // AJAX Proxy
@@ -292,5 +293,140 @@ async function oR(id,ia){
   rC(document.getElementById('sv'),d.conversation);
 }
 document.getElementById('sq').focus();
+</script>
+<?php }
+
+// ============================================================
+// SETTINGS AJAX
+// ============================================================
+add_action('wp_ajax_dpba_save_settings', function() {
+    if (!current_user_can('manage_woocommerce')) wp_send_json_error('Unauthorized');
+
+    $auto_widget = filter_var($_POST['auto_widget'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $order_enabled = filter_var($_POST['order_enabled'] ?? true, FILTER_VALIDATE_BOOLEAN);
+
+    update_option('dpc_auto_widget', $auto_widget);
+    update_option('dpc_order_enabled', $order_enabled);
+
+    // Sync order_enabled to bot backend
+    $url = DPBA_API . '/admin/config';
+    $r = wp_remote_post($url, [
+        'timeout' => 10,
+        'headers' => ['X-Admin-Key' => DPBA_KEY, 'Content-Type' => 'application/json'],
+        'body' => json_encode(['order_enabled' => $order_enabled]),
+    ]);
+
+    $sync_ok = !is_wp_error($r);
+    $sync_msg = $sync_ok ? '' : $r->get_error_message();
+
+    wp_send_json(['ok' => true, 'sync_ok' => $sync_ok, 'sync_msg' => $sync_msg]);
+});
+
+// ============================================================
+// SETTINGS
+// ============================================================
+function dpba_page_settings() {
+    $auto_widget = get_option('dpc_auto_widget', false);
+    $order_enabled = get_option('dpc_order_enabled', true);
+    dpba_css();
+?>
+<style>
+.dpba-set{max-width:640px}
+.dpba-card{background:#fff;border:1px solid #e0e0e0;border-radius:12px;padding:24px;margin-bottom:16px}
+.dpba-card h3{font-size:15px;font-weight:700;margin:0 0 4px;color:#1a1a2e}
+.dpba-card p{font-size:13px;color:#666;margin:0 0 16px}
+.dpba-row{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.dpba-row-info{flex:1}
+.dpba-row-info .label{font-weight:600;font-size:14px;color:#1a1a2e}
+.dpba-row-info .desc{font-size:12px;color:#888;margin-top:2px}
+/* Toggle switch */
+.dpba-sw{position:relative;width:48px;height:26px;flex-shrink:0}
+.dpba-sw input{opacity:0;width:0;height:0}
+.dpba-sw .sl{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#ccc;border-radius:26px;transition:.3s}
+.dpba-sw .sl:before{content:'';position:absolute;height:20px;width:20px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.3s}
+.dpba-sw input:checked+.sl{background:#F68622}
+.dpba-sw input:checked+.sl:before{transform:translateX(22px)}
+.dpba-save{margin-top:20px}
+.dpba-save .btn{padding:10px 28px;font-size:14px;font-weight:600;border-radius:8px}
+.dpba-save .btn.on{background:#F68622;color:#fff;border-color:#F68622}
+.dpba-save .btn.on:hover{background:#E07510}
+.dpba-toast{position:fixed;top:40px;right:20px;padding:14px 22px;border-radius:10px;font-size:13px;font-weight:500;color:#fff;box-shadow:0 4px 20px rgba(0,0,0,.15);z-index:99999;animation:tin .3s}
+.dpba-toast.ok{background:#2e7d32}
+.dpba-toast.err{background:#c62828}
+</style>
+<div class="wrap dpba dpba-set">
+  <h1>⚙️ Bot-Einstellungen</h1>
+
+  <div class="dpba-card">
+    <h3>Chat-Widget</h3>
+    <p>Konfiguration des Chat-Widgets auf der Website</p>
+    <div class="dpba-row">
+      <div class="dpba-row-info">
+        <div class="label">Widget auf allen Seiten anzeigen</div>
+        <div class="desc">Zeigt das Chat-Icon (unten rechts) auf allen Seiten der Website. Wenn deaktiviert, wird das Widget nur dort angezeigt, wo der <code>[dp_chat_widget]</code> Shortcode eingebunden ist.</div>
+      </div>
+      <label class="dpba-sw">
+        <input type="checkbox" id="sw_widget" <?php echo $auto_widget ? 'checked' : ''; ?>>
+        <span class="sl"></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="dpba-card">
+    <h3>Bot-Modi</h3>
+    <p>Welche Funktionen der Bot anbietet</p>
+    <div class="dpba-row">
+      <div class="dpba-row-info">
+        <div class="label">Bestellassistent aktiviert</div>
+        <div class="desc">Wenn deaktiviert, wird der "Bestellen"-Button ausgeblendet. Es bleiben nur <strong>Kundenservice</strong> und <strong>Login-Probleme</strong>. Gilt für alle Kanäle (Web, Telegram, WhatsApp).</div>
+      </div>
+      <label class="dpba-sw">
+        <input type="checkbox" id="sw_order" <?php echo $order_enabled ? 'checked' : ''; ?>>
+        <span class="sl"></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="dpba-save">
+    <button class="btn on" onclick="saveSettings()">Einstellungen speichern</button>
+    <span id="save_status" style="margin-left:12px;font-size:13px;color:#888"></span>
+  </div>
+</div>
+<script>
+async function saveSettings() {
+  const btn = document.querySelector('.dpba-save .btn');
+  const status = document.getElementById('save_status');
+  btn.disabled = true;
+  btn.textContent = 'Speichern...';
+  status.textContent = '';
+
+  const fd = new FormData();
+  fd.append('action', 'dpba_save_settings');
+  fd.append('auto_widget', document.getElementById('sw_widget').checked ? '1' : '0');
+  fd.append('order_enabled', document.getElementById('sw_order').checked ? '1' : '0');
+
+  try {
+    const r = await fetch('<?php echo admin_url("admin-ajax.php"); ?>', { method: 'POST', body: fd, credentials: 'same-origin' });
+    const d = await r.json();
+    if (d.ok) {
+      showToast('Einstellungen gespeichert!', 'ok');
+      if (!d.sync_ok) showToast('Backend-Sync fehlgeschlagen: ' + (d.sync_msg || 'Timeout'), 'err');
+    } else {
+      showToast('Fehler beim Speichern', 'err');
+    }
+  } catch (e) {
+    showToast('Verbindungsfehler', 'err');
+  }
+  btn.disabled = false;
+  btn.textContent = 'Einstellungen speichern';
+}
+
+function showToast(msg, type) {
+  const t = document.createElement('div');
+  t.className = 'dpba-toast ' + type;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 4000);
+}
 </script>
 <?php }

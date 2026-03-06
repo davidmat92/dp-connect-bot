@@ -74,14 +74,13 @@ class WebchatAdapter(ChannelAdapter):
                 ],
             }
         elif kb.type == KeyboardType.MODE_CHOICE:
-            return {
-                "type": "mode_choice",
-                "buttons": [
-                    {"text": "🛒 Bestellen", "callback_data": "mode_order"},
-                    {"text": "🔑 Login-Probleme", "callback_data": "mode_login"},
-                    {"text": "📞 Kundenservice", "callback_data": "mode_support"},
-                ],
-            }
+            from dp_connect_bot.services.bot_config import load_bot_config
+            buttons = []
+            if load_bot_config().get("order_enabled", True):
+                buttons.append({"text": "🛒 Bestellen", "callback_data": "mode_order"})
+            buttons.append({"text": "🔑 Login-Probleme", "callback_data": "mode_login"})
+            buttons.append({"text": "📞 Kundenservice", "callback_data": "mode_support"})
+            return {"type": "mode_choice", "buttons": buttons}
         elif kb.type == KeyboardType.LOGIN_OPTIONS:
             return {
                 "type": "login_options",

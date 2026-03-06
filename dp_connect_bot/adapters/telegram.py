@@ -124,9 +124,11 @@ class TelegramAdapter(ChannelAdapter):
                     {"text": "💬 WhatsApp Chat", "callback_data": "cb_whatsapp"},
                 ])
             elif kb.type == KeyboardType.MODE_CHOICE:
-                all_buttons.append([
-                    {"text": "🛒 Bestellen", "callback_data": "mode_order"},
-                ])
+                from dp_connect_bot.services.bot_config import load_bot_config
+                if load_bot_config().get("order_enabled", True):
+                    all_buttons.append([
+                        {"text": "🛒 Bestellen", "callback_data": "mode_order"},
+                    ])
                 all_buttons.append([
                     {"text": "🔑 Login-Probleme", "callback_data": "mode_login"},
                 ])

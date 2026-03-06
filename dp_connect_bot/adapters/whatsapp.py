@@ -45,11 +45,12 @@ class WhatsAppAdapter(ChannelAdapter):
                 ]
                 break
             elif kb.type == KeyboardType.MODE_CHOICE:
-                buttons = [
-                    {"label": "🛒 Bestellen", "callback": "mode_order"},
-                    {"label": "🔑 Login", "callback": "mode_login"},
-                    {"label": "📞 Service", "callback": "mode_support"},
-                ]
+                from dp_connect_bot.services.bot_config import load_bot_config
+                buttons = []
+                if load_bot_config().get("order_enabled", True):
+                    buttons.append({"label": "🛒 Bestellen", "callback": "mode_order"})
+                buttons.append({"label": "🔑 Login", "callback": "mode_login"})
+                buttons.append({"label": "📞 Service", "callback": "mode_support"})
                 break
             elif kb.type == KeyboardType.LOGIN_OPTIONS:
                 buttons = [
