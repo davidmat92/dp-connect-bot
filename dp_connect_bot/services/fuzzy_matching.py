@@ -278,6 +278,7 @@ def extract_search_terms(text):
             "zeig", "mein", "meine", "meinen", "meiner", "über", "fuer",
             "für", "von", "bei", "aus", "nach", "jetzt", "gleich", "schnell",
             "nochmal", "wäre", "waere", "gut", "schon", "dann", "bräuchte",
+            "und", "oder", "bzw",
         }
         _greetings = CONFIRM_ALL | {"hi", "hallo", "hey", "moin", "servus", "na", "yo", "moinsen"}
         _skip = _filler | _greetings
@@ -289,6 +290,10 @@ def extract_search_terms(text):
             and not w.replace(".", "").replace(",", "").isdigit()
         ]
         if meaningful:
-            unique = [" ".join(meaningful)]
+            # If multiple words remain, search each separately (e.g. "orange" and "mango")
+            if len(meaningful) > 1:
+                unique = meaningful
+            else:
+                unique = [meaningful[0]]
 
     return unique

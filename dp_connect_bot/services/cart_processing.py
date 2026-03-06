@@ -51,6 +51,19 @@ def process_cart_actions(session, ai_response):
                 pid = str(data["product_id"])
                 qty = data.get("quantity", 1)
                 product_check = cache.get_product_by_id(pid)
+
+                # VPE enforcement: round up quantity to next VPE multiple
+                if product_check:
+                    try:
+                        vpe = int(product_check.get("vpe") or 1)
+                    except (ValueError, TypeError):
+                        vpe = 1
+                    if vpe > 1 and qty % vpe != 0:
+                        old_qty = qty
+                        qty = ((qty // vpe) + 1) * vpe
+                        data["quantity"] = qty
+                        clean += f"\n\n📦 Wird in {vpe}er-Packs geliefert – ich pack dir {qty} statt {old_qty} ein!"
+
                 if cache.available and not cache.is_available(pid):
                     if product_check:
                         log.warning(f"Cart add: Produkt {pid} ({product_check.get('title','')}) existiert aber nicht verfuegbar")
