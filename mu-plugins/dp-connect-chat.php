@@ -317,7 +317,7 @@ async function send(t){
   hw();addMsg(msg,"u");showT();ld=true;$("'.$ids['send'].'").disabled=true;
   try{const payload={chat_id:chatId,message:msg};if(lastWcCart&&lastWcCart.items)payload.wc_cart=lastWcCart.items;
   const r=await fetch(API+"/chat/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});const d=await r.json();hideT();
-  if(d.ok){addMsg(d.response,"b");if(d.keyboards&&d.keyboards.length)rKB(d.keyboards);
+  if(d.ok){addMsg(d.text,"b");if(d.keyboards&&d.keyboards.length)rKB(d.keyboards);
     await processWcActions(d.wc_actions);
   }else addMsg("Fehler – nochmal versuchen! 🔄","b")}
   catch(e){hideT();addMsg("Verbindungsfehler.","b")}ld=false;$("'.$ids['send'].'").disabled=false;$("'.$ids['input'].'").focus();
@@ -326,7 +326,7 @@ async function send(t){
 async function sAct(cb){
   if(!chatId)return;showT();
   try{const r=await fetch(API+"/chat/action",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({chat_id:chatId,callback:cb})});const d=await r.json();hideT();
-  if(d.ok){if(d.response)addMsg(d.response,"b");if(d.keyboard)rKB([d.keyboard]);
+  if(d.ok){if(d.text)addMsg(d.text,"b");if(d.keyboards&&d.keyboards.length)rKB(d.keyboards);
     await processWcActions(d.wc_actions);
     if(d.awaiting_input)$("'.$ids['input'].'").focus();
   }}catch(e){hideT()}
@@ -391,7 +391,7 @@ function setMode(mode, btn){
     addMsg("Klar, ich leite dich weiter! Beschreib mir kurz dein Anliegen, damit Davides Team direkt Bescheid weiß. ✍️","b");
     saveHistory();
     // Set support mode on server via first message
-    fetch(B+"/chat/action",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({chat_id:C,callback:"set_support_mode"})});
+    fetch(API+"/chat/action",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({chat_id:chatId,callback:"set_support_mode"})});
   }
 }
 
