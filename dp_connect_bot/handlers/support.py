@@ -11,6 +11,7 @@ from dp_connect_bot.config import log
 from dp_connect_bot.models.response import BotResponse, Button, Keyboard, KeyboardType
 from dp_connect_bot.services.claude_ai import call_claude_support
 from dp_connect_bot.services.history import track_event
+from dp_connect_bot.services.pushover import notify_escalation
 
 
 def handle_support_message(chat_id, text, session, channel):
@@ -45,6 +46,16 @@ def handle_support_message(chat_id, text, session, channel):
         session["conversation"].append({"role": "assistant", "content": ticket_info})
 
         track_event("support_escalated", chat_id, channel, escalation_info.get("reason", ""))
+
+        # Push notification to Davide
+        customer_name = session.get("customer_name") or session.get("user_info", {}).get("wp_display_name", "")
+        notify_escalation(
+            chat_id=chat_id,
+            channel=channel,
+            reason=escalation_info.get("reason", ""),
+            collected_info=escalation_info.get("collected_info", ""),
+            customer_name=customer_name,
+        )
 
         # Add mode choice keyboard so customer can switch back to ordering
         return BotResponse(
@@ -142,13 +153,17 @@ def handle_login_email(session, text):
         return BotResponse(
             text=(
                 f"❌ Mit *{email}* gibt's leider keinen Account.\n\n"
-                "Vielleicht eine andere E-Mail? Oder jetzt registrieren?"
+                "Falls du dich in den letzten 48 Stunden registriert hast: "
+                "Dein Account wird noch geprueft – bitte hab etwas Geduld! "
+                "Du bekommst eine E-Mail, sobald dein Zugang freigeschaltet ist.\n\n"
+                "Falls die Registrierung laenger her ist oder du noch keinen Account hast, "
+                "registriere dich gerne erneut:"
             ),
             keyboards=[Keyboard(
                 type=KeyboardType.LOGIN_OPTIONS,
                 buttons=[
                     Button(text="📝 Jetzt registrieren", callback_data="login_register"),
-                    Button(text="🔄 Andere E-Mail", callback_data="login_retry"),
+                    Button(text="🔄 Andere E-Mail probieren", callback_data="login_retry"),
                 ],
             )],
         )

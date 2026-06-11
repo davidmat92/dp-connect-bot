@@ -77,7 +77,7 @@ class WhatsAppAdapter(ChannelAdapter):
         """Send a message via WhatsApp Cloud API."""
         if not WHATSAPP_TOKEN or not WHATSAPP_PHONE_ID:
             log.warning("WhatsApp nicht konfiguriert")
-            return
+            return False
 
         headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}", "Content-Type": "application/json"}
 
@@ -128,8 +128,11 @@ class WhatsAppAdapter(ChannelAdapter):
             )
             if not resp.ok:
                 log.error(f"WhatsApp send error: {resp.text}")
+                return False
+            return True
         except Exception as e:
             log.error(f"WhatsApp send error: {e}")
+            return False
 
     def _build_flavor_list(self, parent_id):
         """Build WhatsApp list menu with flavors (max 10 rows)."""

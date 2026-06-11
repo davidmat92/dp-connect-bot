@@ -80,8 +80,12 @@ class TelegramAdapter(ChannelAdapter):
             pass
 
     def _send_message(self, chat_id, text, parse_mode="Markdown", reply_markup=None):
-        """Send a message via Telegram API, with chunking and Markdown fallback."""
+        """Send a message via Telegram API, with chunking and Markdown fallback.
+
+        Returns True if all chunks were sent successfully, False otherwise.
+        """
         chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
+        success = True
         for i, chunk in enumerate(chunks):
             payload = {"chat_id": chat_id, "text": chunk, "parse_mode": parse_mode}
             if reply_markup and i == len(chunks) - 1:
@@ -97,8 +101,11 @@ class TelegramAdapter(ChannelAdapter):
                     resp2 = requests.post(f"{TELEGRAM_API}/sendMessage", json=payload, timeout=10)
                     if not resp2.ok:
                         log.error(f"Telegram send failed (plain): {resp2.text}")
+                        success = False
             except Exception as e:
                 log.error(f"Telegram send error: {e}")
+                success = False
+        return success
 
     def _build_reply_markup(self, keyboards):
         """Convert list of generic Keyboards to Telegram inline_keyboard format."""

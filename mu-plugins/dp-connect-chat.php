@@ -307,7 +307,7 @@ async function processWcActions(actions){
   const hadHistory=loadHistory();
   const vid=localStorage.getItem("dp_visitor")||(()=>{const id=Date.now().toString(36)+Math.random().toString(36);localStorage.setItem("dp_visitor",id);return id})();
   if(!chatId){try{const initData={visitor_id:vid};if(WP_USER){initData.wp_user_id=WP_USER.id;initData.wp_display_name=WP_USER.name;initData.wp_email=WP_USER.email;initData.wp_username=WP_USER.login;initData.customer_name=WP_USER.name}const r=await fetch(API+"/chat/init",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(initData)});const d=await r.json();if(d.ok)chatId=d.chat_id;saveHistory()}catch(e){}}
-  pollWcCart();pollTimer=setInterval(pollWcCart,15000);
+  if(WP_USER){pollWcCart();pollTimer=setInterval(pollWcCart,15000);}
 })();
 
 function hw(){if(!started){started=true;const w=$("'.$ids['welcome'].'");if(w){w.style.transition="all .3s";w.style.opacity="0";w.style.maxHeight="0";w.style.padding="0";w.style.overflow="hidden";setTimeout(()=>w.remove(),300)}saveHistory()}}
@@ -347,7 +347,7 @@ function rKB(kbs){
   kbs.forEach(kb=>{const w=document.createElement("div");w.className="dpc-m b";
   if(kb.type==="flavors"){let h=\'<div class="dpc-kbl">Geschmack wählen:</div><div class="dpc-kb fl">\';kb.buttons.forEach(b=>{h+=\'<button class="dpc-kbb" onclick="'.$pfx.'.selF(this,\\\'\'+b.callback+\'\\\')">\'+b.label+\'<span class="dpc-kbs">\'+b.sublabel+\'</span></button>\'});h+=\'</div>\';w.innerHTML=h}
   else if(kb.type==="quantities"){let h=\'<div class="dpc-kbl">\'+kb.label+\' (\'+kb.price+\'/Stk)</div><div class="dpc-kb">\';kb.buttons.forEach(b=>{h+=\'<button class="dpc-kbb q" onclick="'.$pfx.'.sAct(\\\'\'+b.callback+\'\\\')">\'+b.qty+\' Stk</button>\'});h+=\'<button class="dpc-kbb q" style="border-style:dashed;opacity:.6" onclick="'.$pfx.'.cQty(\\\'\'+kb.product_id+\'\\\')">\u270F\uFE0F</button></div>\';w.innerHTML=h}
-  else if(kb.type==="callback"){let h=\'<div class="dpc-cb">\';kb.buttons.forEach(b=>{h+=\'<button class="dpc-cbb" onclick="'.$pfx.'.sAct(\\\'\'+b.callback+\'\\\');">\'+b.label+\'</button>\'});h+=\'</div>\';w.innerHTML=h}
+  else {let h=\'<div class="dpc-cb">\';kb.buttons.forEach(b=>{const cb=b.callback||b.callback_data;const lbl=b.label||b.text;h+=\'<button class="dpc-cbb" onclick="'.$pfx.'.sAct(\\\'\'+cb+\'\\\');">\'+lbl+\'</button>\'});h+=\'</div>\';w.innerHTML=h}
   box.appendChild(w);requestAnimationFrame(()=>box.scrollTop=box.scrollHeight)});saveHistory();
 }
 
@@ -385,12 +385,17 @@ function setMode(mode, btn){
     if(hints)hints.style.display="block";
     // Check if last order exists on server for reorder button
     checkReorder();
+  } else if(mode==="login"){
+    hw();
+    addMsg("🔑 Login-Hilfe","b");
+    addMsg("Klar! Was ist deine E-Mail-Adresse, mit der du registriert bist? ✉️","b");
+    saveHistory();
+    fetch(API+"/chat/action",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({chat_id:chatId,callback:"mode_login"})});
   } else if(mode==="support"){
     hw();
     addMsg("🎧 Kundenservice","b");
     addMsg("Klar, ich leite dich weiter! Beschreib mir kurz dein Anliegen, damit Davides Team direkt Bescheid weiß. ✍️","b");
     saveHistory();
-    // Set support mode on server via first message
     fetch(API+"/chat/action",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({chat_id:chatId,callback:"set_support_mode"})});
   }
 }
@@ -471,28 +476,34 @@ function dpc_embed_shortcode($atts) {
     <div class="dpc-hi"><div class="dpc-hn">DP Connect<?php if (DPC_BETA_MODE): ?><span class="dpc-badge-beta">Beta</span><?php endif; ?></div><div class="dpc-hs">Online</div></div>
     <?php echo dpc_fs_btn_html('dpe-fs'); ?>
   </div>
-<?php if ($is_logged_in): ?>
   <div class="dpc-wel" id="dpe-w">
     <div class="dpc-wel-card">
       <div class="dpc-wel-t">Hey! 👋</div>
-      <div class="dpc-wel-s">Willkommen bei DP Connect. Wie können wir dir helfen?</div>
+      <div class="dpc-wel-s"><?php echo $is_logged_in ? 'Willkommen bei DP Connect. Wie können wir dir helfen?' : 'Probleme beim Login? Wir helfen dir!'; ?></div>
       <?php if (DPC_BETA_MODE): ?><div class="dpc-beta">* Dieser Bot befindet sich in einer frühen Testphase. Fehler bitte entschuldigen! Auf dpconnect.de kannst du ganz normal stöbern und bestellen.</div><?php endif; ?>
       <div class="dpc-mode-btns">
-        <?php if (get_option('dpc_order_enabled', true)): ?>
+        <?php if ($is_logged_in && get_option('dpc_order_enabled', true)): ?>
         <button class="dpc-mode-btn" onclick="DPE.setMode('order',this)">
           <span class="dpc-mode-ico">🛒</span>
           <span class="dpc-mode-t">Bestellen</span>
           <span class="dpc-mode-s">Produkte suchen &amp; in den Warenkorb</span>
         </button>
         <?php endif; ?>
+        <button class="dpc-mode-btn" onclick="DPE.setMode('login',this)">
+          <span class="dpc-mode-ico">🔑</span>
+          <span class="dpc-mode-t">Login-Probleme</span>
+          <span class="dpc-mode-s">Passwort vergessen, Login-Link &amp; Registrierung</span>
+        </button>
+        <?php if ($is_logged_in): ?>
         <button class="dpc-mode-btn" onclick="DPE.setMode('support',this)">
           <span class="dpc-mode-ico">🎧</span>
           <span class="dpc-mode-t">Kundenservice</span>
           <span class="dpc-mode-s">Fragen, Retouren, Lieferstatus &amp; mehr</span>
         </button>
+        <?php endif; ?>
       </div>
     </div>
-    <?php if (get_option('dpc_order_enabled', true)): ?>
+    <?php if ($is_logged_in && get_option('dpc_order_enabled', true)): ?>
     <!-- Bestell-Vorschläge (initial hidden, shown after mode=order) -->
     <div class="dpc-wel-card dpc-order-hints" id="dpe-hints" style="display:none;margin-top:10px">
       <div class="dpc-wel-s">Was suchst du?</div>
@@ -506,16 +517,23 @@ function dpc_embed_shortcode($atts) {
       </div>
     </div>
     <?php endif; ?>
+    <?php if (!$is_logged_in): ?>
+    <div style="margin-top:14px;text-align:center">
+      <div class="dpc-beta">Für Bestellungen und den vollen Kundenservice bitte <a href="/anmelden/" style="color:<?php echo $DPC_COLORS['accent']; ?>;font-weight:600;text-decoration:none">anmelden</a>.</div>
+    </div>
+    <?php endif; ?>
   </div>
   <div class="dpc-msgs" id="dpe-m"></div>
+  <?php if ($is_logged_in): ?>
   <div class="dpc-ct" id="dpe-c">
     <span class="dpc-ct-ico">🛒</span>
     <div class="dpc-ct-nfo"><div class="dpc-ct-cnt" id="dpe-cc">0 Produkte</div><div class="dpc-ct-sub">netto</div></div>
     <div class="dpc-ct-tot" id="dpe-ct">0,00€</div>
     <a class="dpc-ct-btn" id="dpe-cb" href="<?php echo esc_url(wc_get_cart_url()); ?>">Warenkorb öffnen →</a>
   </div>
+  <?php endif; ?>
   <div class="dpc-ia">
-    <input class="dpc-in" id="dpe-i" placeholder="Schreib was du brauchst ..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();DPE.send()}" autocomplete="off">
+    <input class="dpc-in" id="dpe-i" placeholder="<?php echo $is_logged_in ? 'Schreib was du brauchst ...' : 'Deine E-Mail-Adresse ...'; ?>" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();DPE.send()}" autocomplete="off">
     <button class="dpc-snd" id="dpe-s" onclick="DPE.send()"><svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" fill="white"/></svg></button>
   </div>
   <script><?php
@@ -526,9 +544,6 @@ function dpc_embed_shortcode($atts) {
     }
     echo dpc_js($api, 'DPE', $ids, $ajax_url, $wp_user_data);
   ?></script>
-<?php else: ?>
-  <?php echo dpc_guest_gate_html(); ?>
-<?php endif; ?>
 </div>
 </div>
     <?php
@@ -585,26 +600,31 @@ function dpc_widget_shortcode($atts) {
     <?php echo dpc_fs_btn_html('dpw-fs'); ?>
     <button class="dpc-hx" onclick="DPW.toggle()">✕</button>
   </div>
-<?php if ($is_logged_in): ?>
   <div class="dpc-wel" id="dpw-w">
     <div class="dpc-wel-card">
       <div class="dpc-wel-t">Hey! 👋</div>
-      <div class="dpc-wel-s">Wie können wir dir helfen?</div>
+      <div class="dpc-wel-s"><?php echo $is_logged_in ? 'Wie können wir dir helfen?' : 'Probleme beim Login? Wir helfen dir!'; ?></div>
       <?php if (DPC_BETA_MODE): ?><div class="dpc-beta">* Dieser Bot befindet sich in einer frühen Testphase. Fehler bitte entschuldigen! Auf dpconnect.de kannst du ganz normal stöbern und bestellen.</div><?php endif; ?>
       <div class="dpc-mode-btns">
-        <?php if (get_option('dpc_order_enabled', true)): ?>
+        <?php if ($is_logged_in && get_option('dpc_order_enabled', true)): ?>
         <button class="dpc-mode-btn" onclick="DPW.setMode('order',this)">
           <span class="dpc-mode-ico">🛒</span>
           <div><span class="dpc-mode-t">Bestellen</span><span class="dpc-mode-s">Produkte suchen &amp; in den Warenkorb</span></div>
         </button>
         <?php endif; ?>
+        <button class="dpc-mode-btn" onclick="DPW.setMode('login',this)">
+          <span class="dpc-mode-ico">🔑</span>
+          <div><span class="dpc-mode-t">Login-Probleme</span><span class="dpc-mode-s">Passwort vergessen, Login-Link &amp; Registrierung</span></div>
+        </button>
+        <?php if ($is_logged_in): ?>
         <button class="dpc-mode-btn" onclick="DPW.setMode('support',this)">
           <span class="dpc-mode-ico">🎧</span>
           <div><span class="dpc-mode-t">Kundenservice</span><span class="dpc-mode-s">Fragen, Retouren, Lieferstatus &amp; mehr</span></div>
         </button>
+        <?php endif; ?>
       </div>
     </div>
-    <?php if (get_option('dpc_order_enabled', true)): ?>
+    <?php if ($is_logged_in && get_option('dpc_order_enabled', true)): ?>
     <div class="dpc-wel-card dpc-order-hints" id="dpw-hints" style="display:none;margin-top:10px">
       <div class="dpc-wel-s">Was suchst du?</div>
       <div class="dpc-wel-btns">
@@ -617,16 +637,23 @@ function dpc_widget_shortcode($atts) {
       </div>
     </div>
     <?php endif; ?>
+    <?php if (!$is_logged_in): ?>
+    <div style="margin-top:14px;text-align:center">
+      <div class="dpc-beta">Für Bestellungen und den vollen Kundenservice bitte <a href="/anmelden/" style="color:<?php echo $c['accent']; ?>;font-weight:600;text-decoration:none">anmelden</a>.</div>
+    </div>
+    <?php endif; ?>
   </div>
   <div class="dpc-msgs" id="dpw-m"></div>
+  <?php if ($is_logged_in): ?>
   <div class="dpc-ct" id="dpw-c">
     <span class="dpc-ct-ico">🛒</span>
     <div class="dpc-ct-nfo"><div class="dpc-ct-cnt" id="dpw-cc">0 Produkte</div><div class="dpc-ct-sub">netto</div></div>
     <div class="dpc-ct-tot" id="dpw-ct">0,00€</div>
     <a class="dpc-ct-btn" id="dpw-cb" href="<?php echo esc_url(wc_get_cart_url()); ?>">Warenkorb öffnen →</a>
   </div>
+  <?php endif; ?>
   <div class="dpc-ia">
-    <input class="dpc-in" id="dpw-i" placeholder="Schreib was du brauchst ..." onkeydown="if(event.key==='Enter')DPW.send()" autocomplete="off">
+    <input class="dpc-in" id="dpw-i" placeholder="<?php echo $is_logged_in ? 'Schreib was du brauchst ...' : 'Deine E-Mail-Adresse ...'; ?>" onkeydown="if(event.key==='Enter')DPW.send()" autocomplete="off">
     <button class="dpc-snd" id="dpw-s" onclick="DPW.send()"><svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" fill="white"/></svg></button>
   </div>
   <script>
@@ -646,15 +673,6 @@ function dpc_widget_shortcode($atts) {
     if(!o){w.classList.remove("dpc-fs");const c=w.querySelector(".dpc-chat");if(c)c.classList.remove("fullscreen")}
   };
   </script>
-<?php else: ?>
-  <?php echo dpc_guest_gate_html(); ?>
-  <script>
-  var DPW={toggle:function(){
-    const w=document.getElementById("dpc-window"),l=document.getElementById("dpc-launcher");
-    w.classList.toggle("visible");l.classList.toggle("open");
-  }};
-  </script>
-<?php endif; ?>
 </div>
 </div>
     <?php

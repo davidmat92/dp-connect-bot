@@ -90,6 +90,18 @@ def detect_mode(session, text, channel):
         return None
 
     if session.get("message_count", 0) <= 1:
+        # Guest users → route directly to login help (only available feature)
+        if session.get("is_guest"):
+            session["mode"] = "login_help"
+            session["login_step"] = "ask_email"
+            return BotResponse(
+                text=(
+                    "Hey! 👋\n\n"
+                    "Probleme beim Einloggen? Ich helfe dir!\n\n"
+                    "🔑 Was ist deine E-Mail-Adresse, mit der du registriert bist? ✉️"
+                ),
+            )
+
         # First message, no product signal → show mode choice (all channels get buttons)
         name = session.get("customer_name", "")
         session["mode"] = "choosing"

@@ -27,6 +27,7 @@ def webchat_init():
             session["customer_name"] = data["customer_name"]
 
         if data.get("wp_user_id"):
+            session["is_guest"] = False
             session.setdefault("user_info", {}).update({
                 "wp_user_id": data.get("wp_user_id"),
                 "wp_display_name": data.get("wp_display_name", ""),
@@ -35,6 +36,8 @@ def webchat_init():
             })
             if not session.get("customer_name") and data.get("wp_display_name"):
                 session["customer_name"] = data["wp_display_name"]
+        else:
+            session["is_guest"] = True
 
         session_manager.save(chat_id, session)
 

@@ -22,14 +22,18 @@ add_action('wp_ajax_dpba_proxy', function() {
     if (!current_user_can('manage_woocommerce')) wp_send_json_error('Unauthorized');
     $ep = sanitize_text_field($_POST['endpoint'] ?? '');
     $method = strtoupper(sanitize_text_field($_POST['method'] ?? 'GET'));
-    $body = $_POST['body'] ?? '';
+    $body = wp_unslash($_POST['body'] ?? '');
     if (!$ep) wp_send_json_error('No endpoint');
     $url = DPBA_API . $ep;
-    $args = ['timeout'=>15,'headers'=>['X-Admin-Key'=>DPBA_KEY,'Content-Type'=>'application/json']];
+    $args = ['timeout'=>30,'headers'=>['X-Admin-Key'=>DPBA_KEY,'Content-Type'=>'application/json']];
     if ($method==='POST'){$args['body']=is_string($body)?$body:json_encode($body);$r=wp_remote_post($url,$args);}
     else{$r=wp_remote_get($url,$args);}
-    if (is_wp_error($r)) wp_send_json_error($r->get_error_message());
-    wp_send_json(json_decode(wp_remote_retrieve_body($r),true));
+    if (is_wp_error($r)) wp_send_json_error(['error'=>$r->get_error_message(),'url'=>$url,'method'=>$method]);
+    $status = wp_remote_retrieve_response_code($r);
+    $raw = wp_remote_retrieve_body($r);
+    $decoded = json_decode($raw, true);
+    if ($decoded === null) wp_send_json_error(['error'=>'Invalid JSON from bot','status'=>$status,'body'=>substr($raw,0,500)]);
+    wp_send_json($decoded);
 });
 
 function dpba_css() { ?>
@@ -97,11 +101,16 @@ function dpba_js() { ?>
 const AX='<?php echo admin_url("admin-ajax.php"); ?>';
 let _pq={};
 async function api(ep,m='GET',body=null){
-  const k=ep+m;if(_pq[k])return _pq[k];
+  const k=ep+m;
+  if(m==='GET'&&_pq[k])return _pq[k];
   const fd=new FormData();fd.append('action','dpba_proxy');fd.append('endpoint',ep);fd.append('method',m);
   if(body)fd.append('body',JSON.stringify(body));
-  _pq[k]=fetch(AX,{method:'POST',body:fd,credentials:'same-origin'}).then(r=>r.json()).catch(e=>({ok:false})).finally(()=>delete _pq[k]);
-  return _pq[k];
+  const p=fetch(AX,{method:'POST',body:fd,credentials:'same-origin'}).then(r=>r.json()).then(d=>{
+    if(d&&d.success===false&&d.data)return{ok:false,error:d.data.error||d.data.message||JSON.stringify(d.data)};
+    return d;
+  }).catch(e=>({ok:false,error:e.message||'Netzwerkfehler'}));
+  if(m==='GET'){_pq[k]=p;p.finally(()=>delete _pq[k]);}
+  return p;
 }
 function E(s){const d=document.createElement('div');d.textContent=s||'';return d.innerHTML}
 function ago(h){return h<1?Math.round(h*60)+'m':h<24?Math.round(h)+'h':Math.round(h/24)+'d'}
@@ -197,7 +206,24 @@ async function openChat(id){
   document.querySelectorAll('.s').forEach(el=>el.classList.remove('act'));
   ld();
 }
-async function sR(){if(!cur)return;const i=document.getElementById('ri');const m=i.value.trim();if(!m)return;i.value='';await api('/admin/reply','POST',{chat_id:cur,message:m});openChat(cur)}
+async function sR(){
+  if(!cur)return;
+  const i=document.getElementById('ri');const sb=document.querySelector('.snd');
+  const m=i.value.trim();if(!m)return;
+  i.disabled=true;if(sb)sb.disabled=true;
+  try{
+    const r=await api('/admin/reply','POST',{chat_id:cur,message:m});
+    if(!r||!r.ok){
+      toast({customer_name:'Fehler',channel:'system',message:'Antwort konnte nicht gesendet werden: '+(r?.error||'Unbekannter Fehler')});
+    }else{
+      i.value='';openChat(cur);
+    }
+  }catch(e){
+    toast({customer_name:'Fehler',channel:'system',message:'Senden fehlgeschlagen: '+e.message});
+  }finally{
+    i.disabled=false;if(sb)sb.disabled=false;i.focus();
+  }
+}
 async function tH(){if(!cur)return;hm=!hm;await api('/admin/reply','POST',{chat_id:cur,human_mode:hm});uH()}
 function uH(){const b=document.getElementById('hb');b.textContent=hm?'👤 Human':'🤖 Bot';b.classList.toggle('on',hm)}
 ld();uN();

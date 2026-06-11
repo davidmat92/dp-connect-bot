@@ -141,16 +141,20 @@ def call_claude(session, user_message, product_context="", wc_cart=None):
 SUPPORT_TOOLS = [
     {
         "name": "lookup_order",
-        "description": "Sucht eine Bestellung per Bestellnummer, E-Mail-Adresse oder Telefonnummer. Gibt Bestellstatus, Datum, Artikel, Gesamtbetrag und Versandinfos zurueck.",
+        "description": "Sucht eine Bestellung per Bestellnummer, E-Mail-Adresse oder Telefonnummer. WICHTIG: Der Kunde muss immer seine E-Mail-Adresse zur Verifizierung angeben (verification_email). Ohne Verifizierung werden keine Bestelldetails herausgegeben.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "identifier": {
                     "type": "string",
                     "description": "Bestellnummer (z.B. '4521'), E-Mail-Adresse oder Telefonnummer des Kunden"
+                },
+                "verification_email": {
+                    "type": "string",
+                    "description": "E-Mail-Adresse des Kunden zur Verifizierung. PFLICHT – frag den Kunden danach bevor du die Bestellung nachschlägst."
                 }
             },
-            "required": ["identifier"]
+            "required": ["identifier", "verification_email"]
         }
     },
     {
@@ -169,16 +173,20 @@ SUPPORT_TOOLS = [
     },
     {
         "name": "get_order_tracking",
-        "description": "Ruft DHL-Tracking-Informationen fuer eine Bestellung ab. Gibt Sendungsnummer und Tracking-Link zurueck.",
+        "description": "Ruft DHL-Tracking-Informationen fuer eine Bestellung ab. WICHTIG: Der Kunde muss seine E-Mail-Adresse zur Verifizierung angeben. Ohne Verifizierung wird kein Tracking herausgegeben.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "order_id": {
                     "type": "string",
                     "description": "Die Bestellnummer"
+                },
+                "verification_email": {
+                    "type": "string",
+                    "description": "E-Mail-Adresse des Kunden zur Verifizierung. PFLICHT."
                 }
             },
-            "required": ["order_id"]
+            "required": ["order_id", "verification_email"]
         }
     },
     {
@@ -241,8 +249,17 @@ def _execute_support_tool(tool_name, tool_input):
 
     try:
         if tool_name == "lookup_order":
+            verification_email = tool_input.get("verification_email", "").strip().lower()
+            if not verification_email:
+                return {"success": False, "error": "Verifizierung erforderlich: Frag den Kunden nach seiner E-Mail-Adresse bevor du Bestellinfos herausgibst."}
+
             result = wc_client.lookup_order(tool_input["identifier"])
             if result:
+                # Verify email matches order's billing email
+                order_email = result.get("billing", {}).get("email", "").strip().lower()
+                if order_email and verification_email != order_email:
+                    log.warning(f"[lookup_order] Email mismatch: provided={verification_email}, order={order_email}")
+                    return {"success": False, "error": "Die angegebene E-Mail-Adresse stimmt nicht mit der Bestellung ueberein. Bitte den Kunden bitten, die E-Mail-Adresse zu pruefen, mit der er bei DP Connect registriert ist."}
                 return {"success": True, "order": result}
             return {"success": False, "error": "Keine Bestellung gefunden mit dieser Angabe."}
 
@@ -253,6 +270,18 @@ def _execute_support_tool(tool_name, tool_input):
             return {"success": True, "account": result}
 
         elif tool_name == "get_order_tracking":
+            verification_email = tool_input.get("verification_email", "").strip().lower()
+            if not verification_email:
+                return {"success": False, "error": "Verifizierung erforderlich: Frag den Kunden nach seiner E-Mail-Adresse bevor du Tracking-Infos herausgibst."}
+
+            # First lookup order to verify email
+            order_data = wc_client.lookup_order(tool_input["order_id"])
+            if order_data:
+                order_email = order_data.get("billing", {}).get("email", "").strip().lower()
+                if order_email and verification_email != order_email:
+                    log.warning(f"[get_order_tracking] Email mismatch: provided={verification_email}, order={order_email}")
+                    return {"success": False, "error": "Die angegebene E-Mail-Adresse stimmt nicht mit der Bestellung ueberein."}
+
             result = wc_client.get_order_tracking(tool_input["order_id"])
             if result:
                 return {"success": True, "tracking": result}

@@ -154,14 +154,20 @@ def admin_reply():
 
         if channel == "telegram":
             tg = TelegramAdapter()
-            tg._send_message(raw_id, f"\U0001f464 {message}")
+            sent = tg._send_message(raw_id, f"\U0001f464 {message}")
+            if not sent:
+                log.error(f"[admin_reply] Telegram send failed for {raw_id}")
+                return jsonify(ok=False, error="Telegram-Nachricht konnte nicht gesendet werden"), 502
             s["conversation"].append({"role": "assistant", "content": f"[ADMIN] {message}"})
             session_manager.save(chat_id, s)
             return jsonify(ok=True, sent=True, channel="telegram")
 
         elif channel == "whatsapp":
             wa = WhatsAppAdapter()
-            wa._send_message(raw_id, f"\U0001f464 {message}")
+            sent = wa._send_message(raw_id, f"\U0001f464 {message}")
+            if not sent:
+                log.error(f"[admin_reply] WhatsApp send failed for {raw_id}")
+                return jsonify(ok=False, error="WhatsApp-Nachricht konnte nicht gesendet werden"), 502
             s["conversation"].append({"role": "assistant", "content": f"[ADMIN] {message}"})
             session_manager.save(chat_id, s)
             return jsonify(ok=True, sent=True, channel="whatsapp")
