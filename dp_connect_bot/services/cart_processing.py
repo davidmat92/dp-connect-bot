@@ -24,6 +24,7 @@ def process_cart_actions(session, ai_response):
     # Block durch Absatz ersetzen statt loeschen — sonst kleben die
     # umliegenden Saetze zusammen ("...Mengen!Gesamtsumme: ...")
     clean = re.sub(r"\s*```cart_action\n.*?\n```\s*", "\n\n", ai_response, flags=re.DOTALL).strip()
+    clean = re.sub(r"\n{3,}", "\n\n", clean)
 
     keyboards = []
     wc_actions = []
