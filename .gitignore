@@ -15,6 +15,7 @@ venv/
 .venv/
 
 # Database files (live data, not in repo)
+products_snapshot.json
 sessions.db
 sessions.db-wal
 sessions.db-shm
@@ -36,3 +37,4 @@ Thumbs.db
 # Claude
 .claude/
 bot.py
+.last_deploy

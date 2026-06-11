@@ -24,5 +24,6 @@ def health():
         total_products=len(cache.all_products),
         brands=len(cache.brands),
         active_sessions=session_manager.get_active_count(),
+        cache_source=cache.source or "not loaded",
         cache_age=str(datetime.now() - cache.last_loaded) if cache.last_loaded else "not loaded",
     )

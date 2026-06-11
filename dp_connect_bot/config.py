@@ -38,6 +38,10 @@ ADMIN_API_KEY = os.environ.get("ADMIN_API_KEY", "")
 # OpenAI API (Whisper Voice-to-Text)
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
+# Pushover Notifications
+PUSHOVER_USER_KEY = os.environ.get("PUSHOVER_USER_KEY", "")
+PUSHOVER_API_TOKEN = os.environ.get("PUSHOVER_API_TOKEN", "")
+
 # ============================================================
 # DERIVED CONFIG
 # ============================================================
@@ -51,6 +55,7 @@ _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SESSION_DB_PATH = os.path.join(_BASE_DIR, "sessions.db")
 HISTORY_DB_PATH = os.path.join(_BASE_DIR, "bot_history.db")
 SESSION_FILE = os.path.join(_BASE_DIR, "sessions.json")  # Legacy, for migration only
+PRODUCT_SNAPSHOT_PATH = os.path.join(_BASE_DIR, "products_snapshot.json")
 
 # CORS
 ALLOWED_ORIGINS = ["https://dpconnect.de", "https://www.dpconnect.de", "http://localhost"]
