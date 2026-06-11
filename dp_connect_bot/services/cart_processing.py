@@ -21,7 +21,9 @@ def process_cart_actions(session, ai_response):
     """
     pattern = r"```cart_action\n(.*?)\n```"
     matches = re.findall(pattern, ai_response, re.DOTALL)
-    clean = re.sub(r"\s*```cart_action\n.*?\n```\s*", "", ai_response, flags=re.DOTALL).strip()
+    # Block durch Absatz ersetzen statt loeschen — sonst kleben die
+    # umliegenden Saetze zusammen ("...Mengen!Gesamtsumme: ...")
+    clean = re.sub(r"\s*```cart_action\n.*?\n```\s*", "\n\n", ai_response, flags=re.DOTALL).strip()
 
     keyboards = []
     wc_actions = []

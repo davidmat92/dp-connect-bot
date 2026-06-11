@@ -70,8 +70,30 @@ class WhatsAppAdapter(ChannelAdapter):
         self._send_message(chat_id, text, buttons=buttons, list_menu=list_menu)
 
     def send_typing(self, chat_id):
-        # WhatsApp doesn't support typing indicators via Cloud API
+        # WhatsApp Cloud API kennt Typing nur als Reaktion auf eine konkrete
+        # Nachricht — siehe mark_read_typing(message_id).
         pass
+
+    def mark_read_typing(self, message_id):
+        """Markiert die eingehende Nachricht als gelesen + zeigt 'tippt...'
+        (max. 25s oder bis zur Antwort)."""
+        if not WHATSAPP_TOKEN or not WHATSAPP_PHONE_ID or not message_id:
+            return
+        try:
+            requests.post(
+                f"{WHATSAPP_API}/{WHATSAPP_PHONE_ID}/messages",
+                headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}",
+                         "Content-Type": "application/json"},
+                json={
+                    "messaging_product": "whatsapp",
+                    "status": "read",
+                    "message_id": message_id,
+                    "typing_indicator": {"type": "text"},
+                },
+                timeout=5,
+            )
+        except Exception:
+            pass
 
     def _send_message(self, phone, text, buttons=None, list_menu=None):
         """Send a message via WhatsApp Cloud API."""

@@ -35,6 +35,16 @@ SUPPORT_KEYWORDS = {
     "ich will einen menschen", "mitarbeiter",
 }
 
+# Signale, die AUCH mitten im Bestell-Modus zum Support wechseln —
+# sonst sitzt der Kunde im Bestell-Modus fest und erreicht nie einen Menschen.
+ESCALATION_KEYWORDS = {
+    "mensch", "mitarbeiter", "mit davide", "mit jemandem sprechen",
+    "kundenservice", "echten support", "echter support",
+    "reklamation", "retoure", "defekt", "kaputt", "beschädigt", "beschaedigt",
+    "beschwerde", "verstehst mich nicht", "verstehst du nicht",
+    "kapierst du nicht", "du verstehst nicht",
+}
+
 
 def detect_mode(session, text, channel):
     """Smart mode detection. Returns BotResponse if mode gate should block, else None.
@@ -59,6 +69,13 @@ def detect_mode(session, text, channel):
         return None  # Let the message pass through to the detected handler
 
     if session.get("mode") is not None:
+        # Auch im laufenden Bestell-Modus: Eskalations-Signale → Support
+        if session.get("mode") == "order":
+            lower_now = text.strip().lower()
+            if any(kw in lower_now for kw in ESCALATION_KEYWORDS):
+                log.info("Eskalations-Signal im Bestell-Modus → wechsle zu Support")
+                session["mode"] = "support"
+                session["support_step"] = None
         return None
 
     if text.strip().startswith("/"):

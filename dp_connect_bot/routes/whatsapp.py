@@ -43,6 +43,9 @@ def whatsapp_webhook():
                     if not phone:
                         continue
 
+                    # Blaue Haken + "tippt..." sofort anzeigen
+                    adapter.mark_read_typing(msg.get("id"))
+
                     name = contacts[0]["profile"]["name"] if contacts else ""
                     user_info = {"first_name": name}
 

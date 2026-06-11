@@ -26,6 +26,7 @@ def telegram_webhook():
             user_info = message.get("from", {})
             log.info(f"[TG:{chat_id}] {user_info.get('first_name', '?')}: {text}")
 
+            adapter.send_typing(chat_id)
             prefixed = adapter.prefixed_chat_id(chat_id)
             response = unified_handle_message(prefixed, text, user_info, channel="telegram")
             adapter.send_response(chat_id, response)
