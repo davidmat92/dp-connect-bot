@@ -5,6 +5,11 @@
 # Usage: ./deploy.sh
 #
 # Does: git push → upload changed files via PA Files API → reload webapp
+#       → upload changed mu-plugins zu WordPress (dpbot/v1/deploy-plugin)
+#
+# Fuer WordPress-Deploy braucht .env.deploy zusaetzlich:
+#   WP_DEPLOY_USER=dein_wp_admin_username
+#   WP_DEPLOY_APP_PASSWORD=xxxx xxxx xxxx xxxx (WP-Admin → Profil → Application Passwords)
 # ============================================================
 
 set -e
@@ -92,6 +97,53 @@ else
     echo "   ${COUNT} Dateien hochgeladen"
     if [ "$FAIL" -gt 0 ]; then
         echo "   ⚠️  ${FAIL} Dateien fehlgeschlagen!"
+    fi
+fi
+
+# Step 2b: WordPress mu-plugins deployen
+WP_URL="https://dpconnect.de"
+if [ -n "$LAST_DEPLOY" ]; then
+    WP_CHANGED=$(git diff --name-only "$LAST_DEPLOY" HEAD -- mu-plugins 2>/dev/null || echo "")
+else
+    WP_CHANGED=$(git ls-files mu-plugins)
+fi
+
+if [ -n "$WP_CHANGED" ]; then
+    echo ""
+    echo "🔌 WordPress-Plugins hochladen..."
+    if [ -z "$WP_DEPLOY_USER" ] || [ -z "$WP_DEPLOY_APP_PASSWORD" ]; then
+        echo "   ⚠️  WP_DEPLOY_USER/WP_DEPLOY_APP_PASSWORD nicht in .env.deploy gesetzt!"
+        echo "   Geaenderte Plugins muessen manuell hochgeladen werden:"
+        echo "$WP_CHANGED" | sed 's/^/      - /'
+    else
+        WP_FAIL=0
+        while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            [ ! -f "$file" ] && continue
+            printf "   📄 %-60s" "$(basename "$file")"
+            PAYLOAD=$(python3 -c "
+import base64, hashlib, json, sys
+data = open(sys.argv[1], 'rb').read()
+print(json.dumps({
+    'filename': sys.argv[1].rsplit('/', 1)[-1],
+    'content': base64.b64encode(data).decode(),
+    'sha256': hashlib.sha256(data).hexdigest(),
+}))" "$file")
+            RESP=$(curl -s -w "\n%{http_code}" -X POST "${WP_URL}/wp-json/dpbot/v1/deploy-plugin" \
+                -u "${WP_DEPLOY_USER}:${WP_DEPLOY_APP_PASSWORD}" \
+                -H "Content-Type: application/json" \
+                -d "$PAYLOAD")
+            WP_HTTP=$(echo "$RESP" | tail -1)
+            if [ "$WP_HTTP" = "200" ]; then
+                echo "✅"
+            else
+                echo "❌ ($WP_HTTP) $(echo "$RESP" | head -1 | cut -c1-120)"
+                WP_FAIL=$((WP_FAIL + 1))
+            fi
+        done <<< "$WP_CHANGED"
+        if [ "$WP_FAIL" -gt 0 ]; then
+            echo "   ⚠️  ${WP_FAIL} Plugin-Uploads fehlgeschlagen!"
+        fi
     fi
 fi
 
