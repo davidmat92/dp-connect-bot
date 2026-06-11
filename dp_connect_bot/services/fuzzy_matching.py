@@ -2,6 +2,8 @@
 Fuzzy matching & search – alias resolution, typo correction, search term extraction.
 """
 
+import re
+
 from dp_connect_bot.config import CONFIRM_ALL, log
 from dp_connect_bot.utils.formatting import kebab_to_readable
 
@@ -140,15 +142,22 @@ def _build_fuzzy_vocab():
     log.info(f"Fuzzy-Vocab: {len(_fuzzy_vocab)} Woerter")
 
 
+def _replace_word(text, alias, replacement):
+    """Ersetzt alias nur an Wortgrenzen — 'elf' trifft NICHT in 'elfliq',
+    '0 mg' NICHT in '10 mg'."""
+    pattern = r"(?<![\wäöüß])" + re.escape(alias) + r"(?![\wäöüß])"
+    return re.sub(pattern, replacement, text)
+
+
 def normalize_query(text):
-    """Wendet statische Aliases + deutsche Geschmacksnamen an."""
+    """Wendet statische Aliases + deutsche Geschmacksnamen an (wortgrenzen-sicher)."""
     text_lower = text.lower().strip()
     for alias in sorted(ALIASES.keys(), key=len, reverse=True):
         if alias in text_lower:
-            text_lower = text_lower.replace(alias, ALIASES[alias])
+            text_lower = _replace_word(text_lower, alias, ALIASES[alias])
     for de, en in sorted(FLAVOR_ALIASES_DE.items(), key=lambda x: -len(x[0])):
         if de in text_lower:
-            text_lower = text_lower.replace(de, en)
+            text_lower = _replace_word(text_lower, de, en)
     return text_lower
 
 
@@ -184,7 +193,7 @@ def fuzzy_match_brand(text):
                 replacements[candidate] = best_brand
 
     for wrong, correct in sorted(replacements.items(), key=lambda x: -len(x[0])):
-        text_lower = text_lower.replace(wrong, correct)
+        text_lower = _replace_word(text_lower, wrong, correct)
 
     return text_lower
 
