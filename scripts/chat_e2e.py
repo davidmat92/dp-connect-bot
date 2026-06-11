@@ -74,6 +74,11 @@ SCENARIOS = {
         "10 elf bar 800 cherry",
         "super danke dir!",
     ],
+    "nachbestellen": [
+        "10 elf bar 800 cherry",
+        "das wars, bestellen",
+        "hi, nochmal das gleiche wie letztes mal bitte",
+    ],
 }
 
 

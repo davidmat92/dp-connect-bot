@@ -204,6 +204,15 @@ def call_claude(session, user_message, product_context="", wc_cart=None):
     else:
         cart_str = "WARENKORB: Leer"
 
+    # Letzte Bestellung mitgeben — fuer "nochmal das gleiche"/"wie immer"
+    last_order = session.get("last_order")
+    if last_order:
+        lo_lines = "\n".join(
+            f"  - {i.get('title', '?')} x{i.get('quantity', 1)} [ID:{i.get('product_id', '?')}] à {i.get('price', '?')}€"
+            for i in last_order
+        )
+        cart_str += f"\n\nLETZTE BESTELLUNG des Kunden:\n{lo_lines}"
+
     if product_context:
         content = f"[PRODUKTDATEN]\n{product_context}\n\n[{cart_str}]\n\n[KUNDE]\n{user_message}"
     else:
