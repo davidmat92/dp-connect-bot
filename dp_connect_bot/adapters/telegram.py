@@ -84,6 +84,8 @@ class TelegramAdapter(ChannelAdapter):
 
         Returns True if all chunks were sent successfully, False otherwise.
         """
+        from dp_connect_bot.utils.formatting import markdown_to_chat
+        text = markdown_to_chat(text)  # **fett** rendert in Telegram Markdown V1 nicht
         chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
         success = True
         for i, chunk in enumerate(chunks):

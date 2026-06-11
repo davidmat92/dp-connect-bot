@@ -226,6 +226,6 @@ class WhatsAppAdapter(ChannelAdapter):
 
     @staticmethod
     def _clean_text(text):
-        """Clean Telegram Markdown for WhatsApp (basic cleanup)."""
-        # WhatsApp supports *bold* and _italic_ natively, so most Markdown works
-        return text
+        """Claude-Markdown → WhatsApp-Format (**fett** → *fett* etc.)."""
+        from dp_connect_bot.utils.formatting import markdown_to_chat
+        return markdown_to_chat(text)

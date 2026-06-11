@@ -5,6 +5,20 @@ Formatting helpers – pure functions, no external dependencies.
 import re
 
 
+def markdown_to_chat(text):
+    """Claude-Markdown → Chat-Format fuer WhatsApp/Telegram (Markdown V1).
+
+    **fett** wird dort NICHT gerendert — Kunden sehen Sternchen-Salat.
+    Konvertiert zu *fett*, Header zu Fettzeilen, kollabiert Leerzeilen.
+    """
+    if not text:
+        return text
+    text = re.sub(r"\*\*(.+?)\*\*", r"*\1*", text, flags=re.DOTALL)
+    text = re.sub(r"^#{1,5}\s*(.+)$", r"*\1*", text, flags=re.MULTILINE)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text
+
+
 def kebab_to_readable(text):
     """Konvertiert 'strawberry-ice-cream' zu 'Strawberry Ice Cream'."""
     if not text:
