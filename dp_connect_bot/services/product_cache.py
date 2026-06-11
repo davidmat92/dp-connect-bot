@@ -180,8 +180,52 @@ class ProductCache:
                     p = futures[future]
                     log.warning(f"Variationen fuer {p['id']} fehlgeschlagen: {e}")
 
+        # Sonderpreise werden NUR in Airtable gepflegt (nicht in WC) — anreichern,
+        # sonst bietet der Bot keine Mengenrabatte mehr an!
+        sonder = self._load_sonderpreise_from_airtable()
+        if sonder:
+            hits = 0
+            for p in all_normalized:
+                sp = sonder.get(p["id"])
+                if sp:
+                    p["sonderpreis"], p["sonderpreis_min"] = sp
+                    hits += 1
+            log.info(f"Sonderpreise aus Airtable angereichert: {hits} Produkte")
+
         available = [p for p in all_normalized if p["stock_status"] == "instock"]
         return available, all_normalized
+
+    def _load_sonderpreise_from_airtable(self):
+        """Holt nur die Sonderpreis-Felder aus Airtable: {id: (preis, min_anzahl)}."""
+        if not (AIRTABLE_PAT and AIRTABLE_BASE_ID and AIRTABLE_TABLE_ID):
+            return {}
+        headers = {"Authorization": f"Bearer {AIRTABLE_PAT}"}
+        url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_ID}"
+        result = {}
+        offset = None
+        try:
+            while True:
+                params = {
+                    "pageSize": 100,
+                    "filterByFormula": "AND({(sonder) PREIS} != '', {(sonder) MinAnzahl} != '')",
+                    "fields[]": ["ID", "(sonder) PREIS", "(sonder) MinAnzahl"],
+                }
+                if offset:
+                    params["offset"] = offset
+                resp = requests.get(url, headers=headers, params=params, timeout=30)
+                resp.raise_for_status()
+                data = resp.json()
+                for r in data.get("records", []):
+                    f = r.get("fields", {})
+                    pid = str(f.get("ID", "")).strip()
+                    if pid:
+                        result[pid] = (str(f.get("(sonder) PREIS", "")), str(f.get("(sonder) MinAnzahl", "")))
+                offset = data.get("offset")
+                if not offset:
+                    break
+        except Exception as e:
+            log.error(f"Sonderpreis-Anreicherung fehlgeschlagen: {e}")
+        return result
 
     def _wc_paginate(self, url, auth, params=None):
         all_items = []

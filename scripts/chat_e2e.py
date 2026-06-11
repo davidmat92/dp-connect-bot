@@ -50,6 +50,30 @@ SCENARIOS = {
     "tippfehler": [
         "hast du elfbar600 blaubere?",
     ],
+    "support_bestellstatus": [
+        "wo bleibt meine bestellung 99999?",
+    ],
+    "eskalation_mitten_drin": [
+        "20 elf bar 800 cherry",
+        "ich will lieber mit einem menschen sprechen",
+    ],
+    "warenkorb_anzeige": [
+        "10 elf bar 800 blueberry",
+        "was hab ich jetzt im warenkorb?",
+    ],
+    "kategorien_browse": [
+        "was habt ihr denn so alles?",
+    ],
+    "staffelpreis": [
+        "was kosten die elfa pods bei größeren mengen?",
+    ],
+    "englisch": [
+        "hi, do you have elf bar 800 in watermelon? need 20 pieces",
+    ],
+    "smalltalk_dank": [
+        "10 elf bar 800 cherry",
+        "super danke dir!",
+    ],
 }
 
 
