@@ -21,15 +21,23 @@ def pipe_to_list(text):
 
 def get_variant_display_name(product):
     """Ermittelt den besten Anzeigenamen fuer eine Variante."""
+    name = ""
     for field in ["geschmack", "sorte", "farbe", "auswahl"]:
         val = product.get(field)
         if val:
             readable = kebab_to_readable(val)
-            readable = re.sub(r'\s*\d+[gG]$', '', readable).strip()
-            return readable
-    if product.get("flavor"):
-        return product["flavor"]
-    return product.get("title", "Unbekannt")
+            name = re.sub(r'\s*\d+[gG]$', '', readable).strip()
+            break
+    if not name:
+        name = product.get("flavor") or product.get("title", "Unbekannt")
+    # Nikotingehalt anhaengen, sonst sind z.B. 10mg- und 20mg-Variante
+    # desselben Geschmacks nicht unterscheidbar (ELFLIQ etc.)
+    niko = str(product.get("nikotingehalt") or "").strip()
+    if niko and niko.lower() not in name.lower():
+        niko_short = re.sub(r'\s*/?\s*ml\s*nikotinsalz$', '', kebab_to_readable(niko), flags=re.IGNORECASE).strip()
+        niko_short = re.sub(r'\bMg\b', 'mg', niko_short)
+        name = f"{name} ({niko_short})"
+    return name
 
 
 def get_variant_type_label(product):
