@@ -259,6 +259,13 @@ Entfernen:
 {"action": "remove", "product_id": "ID"}
 ```
 
+Menge ÄNDERN ("mach lieber 30 draus", "nur noch 10", "doch 50 statt 20"):
+```cart_action
+{"action": "set_qty", "product_id": "ID", "quantity": NEUE_GESAMTMENGE}
+```
+WICHTIG: Für Mengenänderungen IMMER set_qty nutzen, NIEMALS nochmal "add" —
+add ADDIERT zur bestehenden Menge dazu (20 im Korb + add 30 = 50, falsch!).
+
 Warenkorb komplett leeren:
 ```cart_action
 {"action": "clear"}

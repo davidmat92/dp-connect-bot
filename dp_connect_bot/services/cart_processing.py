@@ -101,6 +101,34 @@ def process_cart_actions(session, ai_response):
                 session["cart"] = [i for i in session["cart"] if str(i["product_id"]) != pid]
                 wc_actions.append(WcAction(action="remove", product_id=pid))
 
+            elif action == "set_qty":
+                # Neue GESAMT-Menge fuer eine bestehende Position ("mach 30 draus")
+                pid = str(data["product_id"])
+                qty = int(data.get("quantity", 0))
+                item = next((i for i in session["cart"] if str(i["product_id"]) == pid), None)
+                if not item:
+                    clean += f"\n\n⚠️ Das Produkt ist nicht im Warenkorb – nichts geändert."
+                elif qty <= 0:
+                    session["cart"] = [i for i in session["cart"] if str(i["product_id"]) != pid]
+                    clean += f"\n\n🗑️ {item['title']} aus dem Warenkorb entfernt."
+                    wc_actions.append(WcAction(action="remove", product_id=pid))
+                else:
+                    product_check = cache.get_product_by_id(pid)
+                    if product_check:
+                        try:
+                            vpe = int(product_check.get("vpe") or 1)
+                        except (ValueError, TypeError):
+                            vpe = 1
+                        if vpe > 1 and qty % vpe != 0:
+                            old_qty = qty
+                            qty = ((qty // vpe) + 1) * vpe
+                            clean += f"\n\n📦 Wird in {vpe}er-Packs geliefert – ich mach {qty} statt {old_qty} draus!"
+                    item["quantity"] = qty
+                    clean += f"\n\n✏️ Menge angepasst: {item['title']} → {qty} Stück"
+                    # Webchat-Sync kennt kein set_qty: remove + add ergibt dieselbe Menge
+                    wc_actions.append(WcAction(action="remove", product_id=pid))
+                    wc_actions.append(WcAction(action="add", product_id=pid, quantity=qty))
+
             elif action == "clear":
                 session["cart"] = []
                 wc_actions.append(WcAction(action="clear"))
