@@ -481,6 +481,18 @@ class ProductCache:
             get_visual(p).lower(),
         ])
 
+    @staticmethod
+    def _part_match(part, searchable):
+        """Wort-Match mit Toleranz fuer deutsche Deklination
+        ("drachen"→"drache", "tieren"→"tier")."""
+        if part in searchable:
+            return True
+        if len(part) > 4:
+            stem = part.rstrip("nse")
+            if len(stem) >= 4 and stem in searchable:
+                return True
+        return False
+
     def _search(self, products, query, max_results):
         try:
             from thefuzz import fuzz
@@ -493,7 +505,7 @@ class ProductCache:
         scored = []
         for p in products:
             searchable = self._searchable(p)
-            if all(part in searchable for part in query_parts):
+            if all(self._part_match(part, searchable) for part in query_parts):
                 score = sum(1 for part in query_parts if part in p.get("title", "").lower())
                 if query_lower == p.get("brand", "").lower():
                     score += 5

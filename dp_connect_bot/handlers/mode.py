@@ -105,6 +105,18 @@ def detect_mode(session, text, channel):
     if not order_signals and any(c.isdigit() for c in lower) and len(lower.split()) >= 2:
         order_signals = True
 
+    # Tippfehler-Rettung: korrigierte Fassung pruefen, bevor das Menue kommt
+    # ("habt ir efbar witermelone" → "habt ihr elfbar watermelon")
+    if not order_signals:
+        try:
+            from dp_connect_bot.services.fuzzy_matching import fuzzy_correct_text, fuzzy_match_brand
+            corrected = fuzzy_match_brand(fuzzy_correct_text(lower))
+            if corrected != lower and any(kw in corrected for kw in PRODUCT_KEYWORDS):
+                log.info(f"Tippfehler-Rettung: {lower!r} → {corrected!r} → order")
+                order_signals = True
+        except Exception:
+            pass
+
     if order_signals:
         if order_enabled:
             session["mode"] = "order"
