@@ -66,8 +66,90 @@ def _api_call(system, messages, tools=None, max_tokens=1024):
 
 
 # ============================================================
-# ORDER MODE (existing)
+# ORDER MODE
 # ============================================================
+
+# Such-Tools fuer den Bestell-Modus: Claude kann den Live-Katalog selbst
+# durchsuchen statt sich allein auf den heuristischen Vorab-Kontext zu
+# verlassen (Fuzzy-Matching kann danebenliegen, vage Anfragen abdecken).
+ORDER_TOOLS = [
+    {
+        "name": "search_products",
+        "description": (
+            "Durchsucht den Live-Produktkatalog (mit Lagerbestand und Preisen). "
+            "Nutze dieses Tool wenn die [PRODUKTDATEN] leer sind, nicht zu dem passen "
+            "was der Kunde sucht, oder du eine alternative Schreibweise, Marke oder "
+            "Kategorie probieren willst. Suche mit Marken-/Produktnamen oder Kategorie "
+            "(z.B. 'elfliq', 'elf bar 800', 'shisha tabak') — OHNE Mengen oder Stueckzahlen."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Suchbegriff: Marke, Produktname oder Kategorie. Keine Mengenangaben.",
+                }
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "get_product_variants",
+        "description": (
+            "Listet ALLE Varianten (Geschmaecker/Staerken/Farben) eines Produkts mit "
+            "Verfuegbarkeit, Preisen und IDs. Nutze es wenn der Kunde nach der Auswahl "
+            "eines konkreten Produkts fragt."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "product_id": {
+                    "type": "string",
+                    "description": "Produkt-ID des Parent-Produkts (aus [ID:...]).",
+                }
+            },
+            "required": ["product_id"],
+        },
+    },
+    {
+        "name": "list_categories",
+        "description": "Uebersicht aller Produktkategorien mit Produktanzahl. Fuer 'was habt ihr so?'-Fragen.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+]
+
+
+def _execute_order_tool(tool_name, tool_input):
+    """Fuehrt ein Bestell-Tool aus. Gibt immer einen String zurueck."""
+    from dp_connect_bot.services.product_cache import cache, ensure_cache
+    from dp_connect_bot.services.product_context import (
+        format_search_results, format_parent_with_variations, get_category_overview,
+    )
+    try:
+        if tool_name == "search_products":
+            query = str(tool_input.get("query", "")).strip()
+            if not query:
+                return "Leere Suchanfrage."
+            result = format_search_results(query)
+            return result.strip() or f"Keine Produkte gefunden fuer '{query}'."
+
+        if tool_name == "get_product_variants":
+            ensure_cache()
+            pid = str(tool_input.get("product_id", "")).strip()
+            product = cache.get_product_by_id(pid)
+            if not product:
+                return f"Produkt {pid} nicht gefunden."
+            if product.get("post_parent"):
+                product = cache.get_product_by_id(product["post_parent"]) or product
+            return format_parent_with_variations(product)
+
+        if tool_name == "list_categories":
+            return get_category_overview()
+
+        return f"Unbekanntes Tool: {tool_name}"
+    except Exception as e:
+        log.error(f"Order tool error {tool_name}: {e}")
+        return "Tool-Fehler, bitte ohne dieses Ergebnis weitermachen."
 
 def call_claude(session, user_message, product_context="", wc_cart=None):
     """Ruft Claude API auf und gibt die Antwort zurueck.
@@ -119,9 +201,30 @@ def call_claude(session, user_message, product_context="", wc_cart=None):
     messages.append({"role": "user", "content": content})
 
     try:
-        data = _api_call(SYSTEM_PROMPT, messages)
+        data = _api_call(SYSTEM_PROMPT, messages, tools=ORDER_TOOLS)
         if not data:
             return "Bot ist noch nicht konfiguriert (API Key fehlt). Bitte Admin kontaktieren."
+
+        # Tool-Loop: Claude darf den Katalog selbst durchsuchen
+        rounds = 0
+        while data.get("stop_reason") == "tool_use" and rounds < 4:
+            rounds += 1
+            assistant_content = data.get("content", [])
+            tool_results = []
+            for block in assistant_content:
+                if block.get("type") == "tool_use":
+                    log.info(f"Order tool call: {block['name']}({json.dumps(block.get('input', {}), ensure_ascii=False)[:200]})")
+                    result = _execute_order_tool(block["name"], block.get("input", {}))
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block["id"],
+                        "content": result,
+                    })
+            messages.append({"role": "assistant", "content": assistant_content})
+            messages.append({"role": "user", "content": tool_results})
+            data = _api_call(SYSTEM_PROMPT, messages, tools=ORDER_TOOLS)
+            if not data:
+                return "Da ist gerade was schiefgelaufen. Versuch's bitte nochmal!"
 
         ai_text = "".join(b["text"] for b in data.get("content", []) if b.get("type") == "text")
 

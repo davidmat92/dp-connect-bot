@@ -15,117 +15,125 @@ def build_product_context(user_message):
     """Baut den Produktkontext fuer Claude basierend auf der Nutzer-Nachricht."""
     ensure_cache()
     search_terms = extract_search_terms(user_message)
-    parts = []
 
     if not search_terms:
-        parts.append(get_category_overview())
-        return "\n".join(parts)
+        return get_category_overview()
 
-    for term in search_terms:
-        is_brand_search = term.lower() in [b.lower() for b in cache.brands]
+    return "\n".join(format_search_results(term) for term in search_terms)
 
-        if is_brand_search:
-            brand_parents = cache.get_parents_available(brand=term)
-            available = []
-            for p in brand_parents:
-                avail_vars = cache.get_variations_available(p["id"])
-                available.append(p)
-                available.extend(avail_vars)
 
-            if not available:
-                brand_variations = [p for p in cache.available
-                                    if p.get("brand", "").lower() == term.lower()
-                                    and p.get("produkt_typ") == "variation"]
-                if brand_variations:
-                    available = brand_variations
-                    for v in brand_variations:
-                        pid = v.get("post_parent")
-                        if pid and pid not in [p.get("id") for p in available]:
-                            parent = cache.get_product_by_id(pid)
-                            if parent:
-                                available.insert(0, parent)
+def format_search_results(term):
+    """Sucht ein Term im Cache und formatiert die Treffer fuer Claude.
 
-            all_found = cache.search_all(term, max_results=50)
-        else:
-            available = cache.search_available(term)
-            all_found = cache.search_all(term)
+    Wird vom Vorab-Kontext (build_product_context) UND vom search_products-Tool
+    der KI genutzt.
+    """
+    ensure_cache()
+    parts = []
+    is_brand_search = term.lower() in [b.lower() for b in cache.brands]
 
-        track_search_query(term, "", "", len(available))
+    if is_brand_search:
+        brand_parents = cache.get_parents_available(brand=term)
+        available = []
+        for p in brand_parents:
+            avail_vars = cache.get_variations_available(p["id"])
+            available.append(p)
+            available.extend(avail_vars)
 
-        if available:
-            simple_products = []
-            parent_ids_seen = set()
-            grouped_parents = []
+        if not available:
+            brand_variations = [p for p in cache.available
+                                if p.get("brand", "").lower() == term.lower()
+                                and p.get("produkt_typ") == "variation"]
+            if brand_variations:
+                available = brand_variations
+                for v in brand_variations:
+                    pid = v.get("post_parent")
+                    if pid and pid not in [p.get("id") for p in available]:
+                        parent = cache.get_product_by_id(pid)
+                        if parent:
+                            available.insert(0, parent)
 
-            for p in available:
-                parent_id = p.get("post_parent")
-                if parent_id and parent_id != "0" and parent_id != "":
-                    if parent_id not in parent_ids_seen:
-                        parent_ids_seen.add(parent_id)
-                        parent = cache.get_product_by_id(parent_id)
-                        avail_vars = cache.get_variations_available(parent_id)
-                        if parent and avail_vars:
-                            grouped_parents.append((parent, avail_vars))
-                        elif avail_vars:
-                            grouped_parents.append((None, avail_vars))
-                else:
-                    pid = p.get("id")
-                    if pid not in parent_ids_seen:
-                        parent_ids_seen.add(pid)
-                        avail_vars = cache.get_variations_available(pid)
-                        if avail_vars:
-                            grouped_parents.append((p, avail_vars))
-                        else:
-                            simple_products.append(p)
+        all_found = cache.search_all(term, max_results=50)
+    else:
+        available = cache.search_available(term)
+        all_found = cache.search_all(term)
 
-            def bestseller_sort(item):
-                parent, variations = item if isinstance(item, tuple) else (item, [])
-                check = parent or (variations[0] if variations else None)
-                if not check:
-                    return 1
-                cats = check.get("category", "").lower()
-                return 0 if "bestseller" in cats else 1
+    track_search_query(term, "", "", len(available))
 
-            grouped_parents.sort(key=bestseller_sort)
-            simple_products.sort(key=lambda p: 0 if "bestseller" in p.get("category", "").lower() else 1)
+    if available:
+        simple_products = []
+        parent_ids_seen = set()
+        grouped_parents = []
 
-            parts.append(f"\n=== VERFUEGBAR fuer '{term}' ===")
+        for p in available:
+            parent_id = p.get("post_parent")
+            if parent_id and parent_id != "0" and parent_id != "":
+                if parent_id not in parent_ids_seen:
+                    parent_ids_seen.add(parent_id)
+                    parent = cache.get_product_by_id(parent_id)
+                    avail_vars = cache.get_variations_available(parent_id)
+                    if parent and avail_vars:
+                        grouped_parents.append((parent, avail_vars))
+                    elif avail_vars:
+                        grouped_parents.append((None, avail_vars))
+            else:
+                pid = p.get("id")
+                if pid not in parent_ids_seen:
+                    parent_ids_seen.add(pid)
+                    avail_vars = cache.get_variations_available(pid)
+                    if avail_vars:
+                        grouped_parents.append((p, avail_vars))
+                    else:
+                        simple_products.append(p)
 
-            parent_limit = 20 if is_brand_search else 10
-            for parent, variations in grouped_parents[:parent_limit]:
-                if parent:
-                    is_bs = "bestseller" in parent.get("category", "").lower()
-                    if not is_bs and variations:
-                        is_bs = any("bestseller" in v.get("category", "").lower() for v in variations)
-                    parts.append(format_parent_with_variations(parent, variations, is_bestseller=is_bs))
-                elif variations:
+        def bestseller_sort(item):
+            parent, variations = item if isinstance(item, tuple) else (item, [])
+            check = parent or (variations[0] if variations else None)
+            if not check:
+                return 1
+            cats = check.get("category", "").lower()
+            return 0 if "bestseller" in cats else 1
+
+        grouped_parents.sort(key=bestseller_sort)
+        simple_products.sort(key=lambda p: 0 if "bestseller" in p.get("category", "").lower() else 1)
+
+        parts.append(f"\n=== VERFUEGBAR fuer '{term}' ===")
+
+        parent_limit = 20 if is_brand_search else 10
+        for parent, variations in grouped_parents[:parent_limit]:
+            if parent:
+                is_bs = "bestseller" in parent.get("category", "").lower()
+                if not is_bs and variations:
                     is_bs = any("bestseller" in v.get("category", "").lower() for v in variations)
-                    parts.append(format_orphan_variations(variations, is_bestseller=is_bs))
+                parts.append(format_parent_with_variations(parent, variations, is_bestseller=is_bs))
+            elif variations:
+                is_bs = any("bestseller" in v.get("category", "").lower() for v in variations)
+                parts.append(format_orphan_variations(variations, is_bestseller=is_bs))
 
-            for p in simple_products[:5]:
-                is_bs = "bestseller" in p.get("category", "").lower()
-                bs_tag = " ⭐BESTSELLER" if is_bs else ""
-                price = format_price_de(p.get("price"))
-                vpe = f" | VPE: {p['vpe']}" if p.get("vpe") else ""
-                parts.append(f"\n  {p['title']} [ID:{p['id']}] | {price}{vpe}{bs_tag}")
+        for p in simple_products[:5]:
+            is_bs = "bestseller" in p.get("category", "").lower()
+            bs_tag = " ⭐BESTSELLER" if is_bs else ""
+            price = format_price_de(p.get("price"))
+            vpe = f" | VPE: {p['vpe']}" if p.get("vpe") else ""
+            parts.append(f"\n  {p['title']} [ID:{p['id']}] | {price}{vpe}{bs_tag}")
 
-        elif all_found:
-            parts.append(f"\n=== '{term}' NICHT LIEFERBAR ===")
-            for p in all_found[:5]:
-                parts.append(f"  - {p['title']} (ausverkauft)")
-            if all_found[0].get("category"):
-                cats = all_found[0]["category"].split("|")
-                for cat in cats:
-                    cat = cat.strip()
-                    if cat and cat.lower() != "bestseller":
-                        alts = cache.get_parents_available(category=cat)
-                        if alts:
-                            parts.append(f"\n  Verfuegbare Alternativen in '{cat}':")
-                            for a in alts[:5]:
-                                parts.append(f"  - {a['title']} [ID:{a['id']}]")
-                        break
-        else:
-            parts.append(f"\nKeine Produkte gefunden fuer '{term}'.")
+    elif all_found:
+        parts.append(f"\n=== '{term}' NICHT LIEFERBAR ===")
+        for p in all_found[:5]:
+            parts.append(f"  - {p['title']} (ausverkauft)")
+        if all_found[0].get("category"):
+            cats = all_found[0]["category"].split("|")
+            for cat in cats:
+                cat = cat.strip()
+                if cat and cat.lower() != "bestseller":
+                    alts = cache.get_parents_available(category=cat)
+                    if alts:
+                        parts.append(f"\n  Verfuegbare Alternativen in '{cat}':")
+                        for a in alts[:5]:
+                            parts.append(f"  - {a['title']} [ID:{a['id']}]")
+                    break
+    else:
+        parts.append(f"\nKeine Produkte gefunden fuer '{term}'.")
 
     return "\n".join(parts)
 
