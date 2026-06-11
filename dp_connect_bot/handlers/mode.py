@@ -139,7 +139,17 @@ def detect_mode(session, text, channel):
                 ),
             )
 
-        # First message, no product signal → show mode choice (all channels get buttons)
+        # Laengere erste Nachrichten sind fast immer konkrete Anliegen —
+        # direkt zur Bestell-KI (kann suchen + eskalieren) statt ins Menue
+        if len(lower.split()) >= 4:
+            if order_enabled:
+                session["mode"] = "order"
+            else:
+                session["mode"] = "support"
+                session["support_step"] = None
+            return None
+
+        # Kurze erste Nachricht ("hi") ohne Signal → Modus-Menue
         name = session.get("customer_name", "")
         session["mode"] = "choosing"
         return BotResponse(

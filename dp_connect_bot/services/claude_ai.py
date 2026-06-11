@@ -144,6 +144,16 @@ def _execute_order_tool(tool_name, tool_input):
                     alt_result = format_search_results(alt)
                     if "Keine Produkte gefunden" not in alt_result:
                         return alt_result
+            # Immer noch 0 und mehrwortig: Teilbegriffe einzeln probieren
+            # ("pikachu vape" → Treffer fuer "pikachu" allein)
+            if "Keine Produkte gefunden" in result and len(query.split()) > 1:
+                for w in sorted(query.split(), key=len, reverse=True):
+                    if len(w) < 4:
+                        continue
+                    sub = format_search_results(w)
+                    if "Keine Produkte gefunden" not in sub:
+                        return (f"(Keine Treffer fuer '{query}' als Ganzes — "
+                                f"aber Treffer fuer den Teilbegriff '{w}':)\n{sub}")
             return result.strip() or f"Keine Produkte gefunden fuer '{query}'."
 
         if tool_name == "get_product_variants":
