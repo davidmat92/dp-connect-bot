@@ -13,6 +13,22 @@ from dp_connect_bot.config import (
 )
 
 
+def _whisper_vocab_prompt():
+    """Marken-Glossar als Whisper-Bias-Prompt — sonst werden Produktnamen
+    phonetisch verschrieben ('Elflick' statt ELFLIQ, 'Elfapots' statt ELFA Pods)."""
+    fixed = ["ELFLIQ", "ELFA Pods", "Elf Bar", "ELFX", "Lost Mary", "Tappo"]
+    try:
+        from collections import Counter
+        from dp_connect_bot.services.product_cache import cache
+        counts = Counter(p.get("brand", "") for p in cache.available if p.get("brand"))
+        top = [b for b, _ in counts.most_common(35) if b and b.lower() not in
+               {f.lower() for f in fixed}]
+        vocab = fixed + top
+    except Exception:
+        vocab = fixed
+    return "Bestellung im Vape-Großhandel. Produktnamen: " + ", ".join(vocab) + "."
+
+
 def transcribe_telegram_voice(file_id):
     """Transkribiert eine Telegram Voice Message via OpenAI Whisper API."""
     if not OPENAI_API_KEY:
@@ -39,7 +55,7 @@ def transcribe_telegram_voice(file_id):
                 "https://api.openai.com/v1/audio/transcriptions",
                 headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
                 files={"file": (f"voice{suffix}", audio_file, f"audio/{suffix.strip('.')}")},
-                data={"model": "whisper-1", "language": "de"},
+                data={"model": "whisper-1", "language": "de", "prompt": _whisper_vocab_prompt()},
                 timeout=30,
             )
             whisper_resp.raise_for_status()
@@ -104,7 +120,7 @@ def transcribe_whatsapp_voice(media_id):
                 "https://api.openai.com/v1/audio/transcriptions",
                 headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
                 files={"file": ("voice.ogg", audio_file, "audio/ogg")},
-                data={"model": "whisper-1", "language": "de"},
+                data={"model": "whisper-1", "language": "de", "prompt": _whisper_vocab_prompt()},
                 timeout=30,
             )
             if not whisper_resp.ok:

@@ -130,6 +130,11 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
         resp = handle_pending_quantity(session, stripped)
         session_manager.save(chat_id, session)
         return resp
+    if pending and any(w in stripped.lower() for w in
+                       ("nicht", "doch nicht", "abbrechen", "stop", "stopp", "cancel", "nein", "ne ")):
+        # Kunde lehnt die angebotene Auswahl ab → Pending verwerfen,
+        # Nachricht normal weiterverarbeiten (AI antwortet auf den Rest)
+        session["pending_selection"] = None
 
     # --- Mode gate ---
     mode_response = detect_mode(session, text, channel)
