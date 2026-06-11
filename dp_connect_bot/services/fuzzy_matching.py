@@ -79,7 +79,9 @@ FLAVOR_ALIASES_DE = {
     "himbeere": "raspberry", "himbeeren": "raspberry",
     "kokosnuss": "coconut", "kokos": "coconut",
     "minze": "mint", "pfefferminze": "mint", "menthol": "menthol",
-    "kiwi": "kiwi", "tabak": "tobacco",
+    # "tabak" NICHT zu "tobacco" uebersetzen — es ist hier Kategorie-Wort
+    # (WC-Kategorie "Tabak"), die Uebersetzung macht Tabak unauffindbar!
+    "kiwi": "kiwi",
     "kaffee": "coffee", "cola": "cola",
     "brombeere": "blackberry", "brombeeren": "blackberry",
     "sahne": "cream", "eis": "ice",

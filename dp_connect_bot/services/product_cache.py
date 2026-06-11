@@ -2,6 +2,7 @@
 Product Cache – loads and indexes products from WooCommerce (primary) or Airtable (fallback).
 """
 
+import html
 import json
 import os
 import requests
@@ -268,29 +269,32 @@ class ProductCache:
         if not price and parent:
             price = str(parent.get("regular_price", "") or parent.get("price", "") or "")
 
+        # WooCommerce liefert Namen/Kategorien HTML-encoded ("Tabak &amp; Kohle",
+        # "Cola &amp; Orange") — dekodieren, sonst verschmutzt es Suche und Kontext
+        u = html.unescape
         return {
             "id": str(p.get("id", "")),
             "post_parent": str(parent["id"] if is_variation else (p.get("parent_id", "") or "")),
-            "title": title,
-            "brand": brand,
-            "product_line": product_line,
-            "flavor": flavor,
+            "title": u(title),
+            "brand": u(brand),
+            "product_line": u(product_line),
+            "flavor": u(flavor),
             "produkt_typ": "variation" if is_variation else p.get("type", ""),
-            "geschmack": geschmack,
-            "farbe": get_attr("farbe", "pa_farbe", "color", "colour"),
-            "auswahl": get_attr("auswahl", "pa_auswahl", "selection"),
-            "sorte": get_attr("sorte", "pa_sorte", "variety"),
-            "nikotingehalt": get_attr("nikotingehalt", "pa_nikotingehalt", "nicotine", "nikotin"),
+            "geschmack": u(geschmack),
+            "farbe": u(get_attr("farbe", "pa_farbe", "color", "colour")),
+            "auswahl": u(get_attr("auswahl", "pa_auswahl", "selection")),
+            "sorte": u(get_attr("sorte", "pa_sorte", "variety")),
+            "nikotingehalt": u(get_attr("nikotingehalt", "pa_nikotingehalt", "nicotine", "nikotin")),
             "price": price,
             "sonderpreis": str(p.get("sale_price", "") or ""),
             "sonderpreis_min": str(meta.get("_sonderpreis_min", parent_meta.get("_sonderpreis_min", "")) or ""),
             "stock_status": p.get("stock_status", ""),
             "stock": str(p.get("stock_quantity", "") or ""),
-            "category": cats,
+            "category": u(cats),
             "vpe": str(meta.get("_vpe", parent_meta.get("_vpe", "")) or get_attr("vpe", "pa_vpe") or ""),
             "url": p.get("permalink", (parent or {}).get("permalink", "")),
             "sku": p.get("sku", ""),
-            "tags": tags,
+            "tags": u(tags),
             "image_url": image_url,
         }
 

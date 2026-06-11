@@ -133,6 +133,15 @@ def _execute_order_tool(tool_name, tool_input):
             if not query:
                 return "Leere Suchanfrage."
             result = format_search_results(query)
+            # Bei 0 Treffern: Alias-normalisierte Query probieren
+            # (z.B. "shisha tabak" → Kategorie heisst nur "tabak")
+            if "Keine Produkte gefunden" in result:
+                from dp_connect_bot.services.fuzzy_matching import normalize_query
+                alt = normalize_query(query)
+                if alt and alt != query.lower():
+                    alt_result = format_search_results(alt)
+                    if "Keine Produkte gefunden" not in alt_result:
+                        return alt_result
             return result.strip() or f"Keine Produkte gefunden fuer '{query}'."
 
         if tool_name == "get_product_variants":
