@@ -79,6 +79,34 @@ SCENARIOS = {
         "das wars, bestellen",
         "hi, nochmal das gleiche wie letztes mal bitte",
     ],
+    # ── Härtetests ──
+    "visuell": [
+        "habt ihr dieses liquid mit dem tier drauf?",
+    ],
+    "korrektur": [
+        "20 elf bar 800 cherry",
+        "ah ne warte, nicht cherry, peach ice mein ich",
+    ],
+    "unter_mindestmenge": [
+        "ich brauch nur 5 elf bar 800 blueberry",
+    ],
+    "vage_menge": [
+        "pack mir mal n paar elf bar 800 watermelon ein",
+    ],
+    "produktvergleich": [
+        "was ist der unterschied zwischen den elfa pods und der elf bar 800?",
+    ],
+    "harte_tippfehler": [
+        "habt ir efbar witermelone аuf lаger?",
+    ],
+    "preisverhandlung": [
+        "100 elfa pods peach ice — geht da noch was am preis?",
+    ],
+    "doppelte_korrektur": [
+        "30 elf bar 800 blueberry",
+        "mach 20 draus",
+        "ach komm, doch 30",
+    ],
 }
 
 

@@ -25,6 +25,7 @@ _VISION_MODEL = "claude-haiku-4-5"
 
 _lock = threading.Lock()
 _index_cache = None
+_index_mtime = None
 
 _DESCRIBE_PROMPT = (
     "Beschreibe NUR was auf dieser Produktverpackung visuell zu sehen ist, "
@@ -39,30 +40,40 @@ _DESCRIBE_PROMPT = (
 
 
 def load_index() -> dict:
-    global _index_cache
+    global _index_cache, _index_mtime
     with _lock:
-        if _index_cache is not None:
+        try:
+            mtime = os.path.getmtime(INDEX_PATH) if os.path.exists(INDEX_PATH) else None
+        except OSError:
+            mtime = None
+        # Bei Dateiaenderung neu laden (andere Worker-Prozesse indexieren evtl. parallel)
+        if _index_cache is not None and mtime == _index_mtime:
             return _index_cache
         try:
-            if os.path.exists(INDEX_PATH):
+            if mtime is not None:
                 with open(INDEX_PATH, "r", encoding="utf-8") as fh:
                     _index_cache = json.load(fh)
             else:
                 _index_cache = {}
+            _index_mtime = mtime
         except Exception as e:
             log.error(f"Visual-Index laden fehlgeschlagen: {e}")
-            _index_cache = {}
+            _index_cache = _index_cache or {}
         return _index_cache
 
 
 def _save_index(index: dict):
-    global _index_cache
+    global _index_cache, _index_mtime
     with _lock:
         tmp = INDEX_PATH + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(index, fh, ensure_ascii=False, indent=1)
         os.replace(tmp, INDEX_PATH)
         _index_cache = index
+        try:
+            _index_mtime = os.path.getmtime(INDEX_PATH)
+        except OSError:
+            _index_mtime = None
 
 
 def get_visual(product) -> str:

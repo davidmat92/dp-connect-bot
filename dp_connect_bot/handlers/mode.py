@@ -28,7 +28,8 @@ PRODUCT_KEYWORDS = {
 SUPPORT_KEYWORDS = {
     "wo bleibt", "wo ist meine bestellung", "bestellung verfolgen",
     "tracking", "sendungsverfolgung", "lieferstatus",
-    "paket", "verschickt", "versandt", "meine lieferung", "versand status",
+    "mein paket", "paket nicht angekommen", "paket noch nicht", "wo ist das paket",
+    "verschickt", "versandt", "meine lieferung", "versand status",
     "einloggen", "login", "anmelden", "kann mich nicht einloggen",
     "passwort", "kennwort", "registrierung", "registrieren",
     "keine zugangsdaten", "zugangsdaten",
