@@ -45,9 +45,9 @@ class WhatsAppAdapter(ChannelAdapter):
                 ]
                 break
             elif kb.type == KeyboardType.MODE_CHOICE:
-                from dp_connect_bot.services.bot_config import load_bot_config
+                from dp_connect_bot.services.bot_config import channel_flag
                 buttons = []
-                if load_bot_config().get("order_enabled", True):
+                if channel_flag("whatsapp", "order_enabled"):
                     buttons.append({"label": "🛒 Bestellen", "callback": "mode_order"})
                 buttons.append({"label": "🔑 Login", "callback": "mode_login"})
                 buttons.append({"label": "📞 Service", "callback": "mode_support"})

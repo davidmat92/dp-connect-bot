@@ -9,7 +9,10 @@ from dp_connect_bot.config import ADMIN_API_KEY, HISTORY_DB_PATH, SESSION_TIMEOU
 from dp_connect_bot.models.session import session_manager
 from dp_connect_bot.adapters.telegram import TelegramAdapter
 from dp_connect_bot.adapters.whatsapp import WhatsAppAdapter
-from dp_connect_bot.services.bot_config import load_bot_config, save_bot_config
+from dp_connect_bot.services.bot_config import (
+    load_bot_config, save_bot_config, get_channel_config,
+    CHANNELS, CHANNEL_BOOL_FLAGS,
+)
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -507,16 +510,30 @@ def admin_config():
     try:
         if request.method == "GET":
             config = load_bot_config()
-            return jsonify(ok=True, config=config)
+            effective = {ch: get_channel_config(ch) for ch in CHANNELS}
+            return jsonify(ok=True, config=config, effective=effective)
 
         # POST – update config
         data = request.get_json() or {}
         config = load_bot_config()
         if "order_enabled" in data:
             config["order_enabled"] = bool(data["order_enabled"])
+        # Per-channel overrides: {"channels": {"telegram": {"enabled": false, ...}}}
+        if isinstance(data.get("channels"), dict):
+            channels_cfg = config.setdefault("channels", {})
+            for ch_name, flags in data["channels"].items():
+                if ch_name not in CHANNELS or not isinstance(flags, dict):
+                    continue
+                ch_cfg = channels_cfg.setdefault(ch_name, {})
+                for flag in CHANNEL_BOOL_FLAGS:
+                    if flag in flags:
+                        ch_cfg[flag] = bool(flags[flag])
+                if "disabled_message" in flags:
+                    ch_cfg["disabled_message"] = str(flags["disabled_message"] or "")[:500]
         save_bot_config(config)
         log.info(f"[admin_config] Config updated: {config}")
-        return jsonify(ok=True, config=config)
+        effective = {ch: get_channel_config(ch) for ch in CHANNELS}
+        return jsonify(ok=True, config=config, effective=effective)
     except Exception as e:
         log.error(f"[admin_config] Error: {e}")
         return jsonify(ok=False, error="Internal error"), 500

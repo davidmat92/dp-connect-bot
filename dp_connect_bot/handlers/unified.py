@@ -49,6 +49,13 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
         BotResponse
     """
     chat_id = str(chat_id)
+
+    # Kanal komplett deaktiviert? → Hinweis statt Verarbeitung
+    from dp_connect_bot.services.bot_config import get_channel_config
+    ch_cfg = get_channel_config(channel)
+    if not ch_cfg["enabled"]:
+        return BotResponse(text=ch_cfg["disabled_message"])
+
     session = session_manager.get(chat_id, archive_callback=archive_session)
     session["channel"] = channel
 
@@ -230,6 +237,13 @@ def unified_handle_callback(chat_id, callback_data, channel="telegram"):
         BotResponse
     """
     chat_id = str(chat_id)
+
+    # Kanal komplett deaktiviert? → Hinweis statt Verarbeitung
+    from dp_connect_bot.services.bot_config import get_channel_config
+    ch_cfg = get_channel_config(channel)
+    if not ch_cfg["enabled"]:
+        return BotResponse(text=ch_cfg["disabled_message"])
+
     session = session_manager.get(chat_id, archive_callback=archive_session)
 
     if callback_data == "mode_order":

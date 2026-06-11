@@ -41,8 +41,8 @@ def detect_mode(session, text, channel):
 
     Side effect: sets session["mode"] if detected.
     """
-    from dp_connect_bot.services.bot_config import load_bot_config
-    order_enabled = load_bot_config().get("order_enabled", True)
+    from dp_connect_bot.services.bot_config import channel_flag
+    order_enabled = channel_flag(channel, "order_enabled")
 
     # Handle "choosing" state: user typed text instead of clicking a button
     if session.get("mode") == "choosing":
@@ -127,8 +127,8 @@ def handle_whatsapp_mode_choice(session, text):
     if session.get("mode") != "choosing":
         return None
 
-    from dp_connect_bot.services.bot_config import load_bot_config
-    order_enabled = load_bot_config().get("order_enabled", True)
+    from dp_connect_bot.services.bot_config import channel_flag
+    order_enabled = channel_flag("whatsapp", "order_enabled")
 
     stripped = text.strip()
     if stripped == "1" and order_enabled:

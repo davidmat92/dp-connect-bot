@@ -61,6 +61,14 @@ def whatsapp_webhook():
                     # --- Voice message ---
                     elif msg.get("type") == "audio":
                         log.info(f"[WA:{phone}] Voice message received")
+                        from dp_connect_bot.services.bot_config import channel_flag
+                        if not channel_flag("whatsapp", "voice_enabled"):
+                            adapter._send_message(
+                                phone,
+                                "Sprachnachrichten sind hier gerade deaktiviert. \U0001f64f\n"
+                                "Schreib mir einfach, was du brauchst!",
+                            )
+                            continue
                         adapter._send_message(phone, "\U0001f3a4 _Sprachnachricht wird verarbeitet..._")
                         audio_id = msg.get("audio", {}).get("id")
                         text = transcribe_whatsapp_voice(audio_id)

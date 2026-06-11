@@ -74,9 +74,9 @@ class WebchatAdapter(ChannelAdapter):
                 ],
             }
         elif kb.type == KeyboardType.MODE_CHOICE:
-            from dp_connect_bot.services.bot_config import load_bot_config
+            from dp_connect_bot.services.bot_config import channel_flag
             buttons = []
-            if load_bot_config().get("order_enabled", True):
+            if channel_flag("web", "order_enabled"):
                 buttons.append({"text": "🛒 Bestellen", "callback_data": "mode_order"})
             buttons.append({"text": "🔑 Login-Probleme", "callback_data": "mode_login"})
             buttons.append({"text": "📞 Kundenservice", "callback_data": "mode_support"})

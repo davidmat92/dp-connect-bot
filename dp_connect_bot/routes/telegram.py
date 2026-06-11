@@ -38,19 +38,27 @@ def telegram_webhook():
             file_id = voice.get("file_id")
             log.info(f"[TG:{chat_id}] Voice message received")
 
-            adapter._send_message(chat_id, "\U0001f3a4 _Sprachnachricht wird verarbeitet..._")
-            text = transcribe_telegram_voice(file_id)
-            if text:
-                adapter._send_message(chat_id, f"\U0001f3a4 _{text}_")
-                prefixed = adapter.prefixed_chat_id(chat_id)
-                response = unified_handle_message(prefixed, text, user_info, channel="telegram")
-                adapter.send_response(chat_id, response)
-            else:
+            from dp_connect_bot.services.bot_config import channel_flag
+            if not channel_flag("telegram", "voice_enabled"):
                 adapter._send_message(
                     chat_id,
-                    "Sorry, ich konnte die Sprachnachricht nicht verstehen. \U0001f605\n"
-                    "Kannst du mir stattdessen schreiben was du brauchst?",
+                    "Sprachnachrichten sind hier gerade deaktiviert. \U0001f64f\n"
+                    "Schreib mir einfach, was du brauchst!",
                 )
+            else:
+                adapter._send_message(chat_id, "\U0001f3a4 _Sprachnachricht wird verarbeitet..._")
+                text = transcribe_telegram_voice(file_id)
+                if text:
+                    adapter._send_message(chat_id, f"\U0001f3a4 _{text}_")
+                    prefixed = adapter.prefixed_chat_id(chat_id)
+                    response = unified_handle_message(prefixed, text, user_info, channel="telegram")
+                    adapter.send_response(chat_id, response)
+                else:
+                    adapter._send_message(
+                        chat_id,
+                        "Sorry, ich konnte die Sprachnachricht nicht verstehen. \U0001f605\n"
+                        "Kannst du mir stattdessen schreiben was du brauchst?",
+                    )
 
         # --- Callback from inline keyboard ---
         callback = update.get("callback_query")
