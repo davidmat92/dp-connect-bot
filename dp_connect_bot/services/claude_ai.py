@@ -7,7 +7,7 @@ import json
 import os
 import requests
 
-from dp_connect_bot.config import ANTHROPIC_API_KEY, log
+from dp_connect_bot.config import ANTHROPIC_API_KEY, CLAUDE_MODEL, log
 from dp_connect_bot.utils.formatting import parse_price
 
 
@@ -52,10 +52,12 @@ def _api_call(system, messages, tools=None, max_tokens=2000):
 
     headers = {**_API_HEADERS, "x-api-key": ANTHROPIC_API_KEY}
     payload = {
-        "model": "claude-sonnet-4-20250514",
+        "model": CLAUDE_MODEL,
         "max_tokens": max_tokens,
         "system": system,
         "messages": messages,
+        # Sonnet 4.6 default-effort ist "high" → fuer Chat-Latenz auf medium
+        "output_config": {"effort": "medium"},
     }
     if tools:
         payload["tools"] = tools

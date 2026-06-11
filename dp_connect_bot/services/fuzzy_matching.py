@@ -288,6 +288,14 @@ def extract_search_terms(text):
             "für", "von", "bei", "aus", "nach", "jetzt", "gleich", "schnell",
             "nochmal", "wäre", "waere", "gut", "schon", "dann", "bräuchte",
             "und", "oder", "bzw",
+            # Referenzwörter auf die letzte Bot-Liste — NIEMALS als Suchbegriff
+            # verwenden, sonst landet irreführender Produktkontext bei Claude
+            # ("nimm 2x die erste sorte" darf keine 'sorte'-Suche ausloesen)
+            "nimm", "erste", "ersten", "erster", "zweite", "zweiten", "dritte",
+            "dritten", "vierte", "letzte", "letzten", "beide", "beiden",
+            "davon", "obere", "oberen", "untere", "unteren", "sorte", "sorten",
+            "variante", "varianten", "option", "optionen", "stück", "stueck",
+            "mal", "x", "je", "jeweils",
         }
         _greetings = CONFIRM_ALL | {"hi", "hallo", "hey", "moin", "servus", "na", "yo", "moinsen"}
         _skip = _filler | _greetings
@@ -297,6 +305,7 @@ def extract_search_terms(text):
             w for w in clean.split()
             if w not in _skip and len(w) >= 2
             and not w.replace(".", "").replace(",", "").isdigit()
+            and not re.fullmatch(r"\d+\s*[x×]", w)  # Mengenangaben wie "2x"
         ]
         if meaningful:
             # If multiple words remain, search each separately (e.g. "orange" and "mango")

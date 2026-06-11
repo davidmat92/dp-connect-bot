@@ -13,6 +13,9 @@ import logging
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+# Sonnet 4 ist deprecated (Abschaltung 2026-06-15) → Sonnet 4.6.
+# Env-Override erlaubt Rollback ohne Deploy (.env + Webapp-Reload).
+CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
 AIRTABLE_PAT = os.environ.get("AIRTABLE_PAT", "")
 AIRTABLE_BASE_ID = os.environ.get("AIRTABLE_BASE_ID", "")
 AIRTABLE_TABLE_ID = os.environ.get("AIRTABLE_TABLE_ID", "")
