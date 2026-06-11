@@ -465,6 +465,22 @@ class ProductCache:
     def search_all(self, query, max_results=25):
         return self._search(self.all_products, query, max_results)
 
+    @staticmethod
+    def _searchable(p):
+        """Durchsuchbarer Text eines Produkts — inkl. visueller Beschreibung
+        ("das Liquid mit dem Tier drauf")."""
+        from dp_connect_bot.services.visual_index import get_visual
+        return " ".join([
+            p.get("title", "").lower(),
+            p.get("category", "").lower(),
+            p.get("brand", "").lower(),
+            kebab_to_readable(p.get("geschmack", "")).lower(),
+            kebab_to_readable(p.get("auswahl", "")).lower(),
+            kebab_to_readable(p.get("farbe", "")).lower(),
+            p.get("tags", "").lower(),
+            get_visual(p).lower(),
+        ])
+
     def _search(self, products, query, max_results):
         try:
             from thefuzz import fuzz
@@ -476,15 +492,7 @@ class ProductCache:
         query_parts = query_lower.split()
         scored = []
         for p in products:
-            searchable = " ".join([
-                p.get("title", "").lower(),
-                p.get("category", "").lower(),
-                p.get("brand", "").lower(),
-                kebab_to_readable(p.get("geschmack", "")).lower(),
-                kebab_to_readable(p.get("auswahl", "")).lower(),
-                kebab_to_readable(p.get("farbe", "")).lower(),
-                p.get("tags", "").lower(),
-            ])
+            searchable = self._searchable(p)
             if all(part in searchable for part in query_parts):
                 score = sum(1 for part in query_parts if part in p.get("title", "").lower())
                 if query_lower == p.get("brand", "").lower():
@@ -499,15 +507,7 @@ class ProductCache:
 
         if not scored and has_fuzzy and len(query_parts) <= 4:
             for p in products:
-                searchable = " ".join([
-                    p.get("title", "").lower(),
-                    p.get("category", "").lower(),
-                    p.get("brand", "").lower(),
-                    kebab_to_readable(p.get("geschmack", "")).lower(),
-                    kebab_to_readable(p.get("auswahl", "")).lower(),
-                    kebab_to_readable(p.get("farbe", "")).lower(),
-                    p.get("tags", "").lower(),
-                ])
+                searchable = self._searchable(p)
                 score = fuzz.token_set_ratio(query_lower, searchable)
                 if score >= 70:
                     scored.append((score, p))

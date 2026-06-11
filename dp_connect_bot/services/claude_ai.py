@@ -82,7 +82,9 @@ ORDER_TOOLS = [
             "Nutze dieses Tool wenn die [PRODUKTDATEN] leer sind, nicht zu dem passen "
             "was der Kunde sucht, oder du eine alternative Schreibweise, Marke oder "
             "Kategorie probieren willst. Suche mit Marken-/Produktnamen oder Kategorie "
-            "(z.B. 'elfliq', 'elf bar 800', 'shisha tabak') — OHNE Mengen oder Stueckzahlen."
+            "(z.B. 'elfliq', 'elf bar 800', 'shisha tabak') — OHNE Mengen oder Stueckzahlen. "
+            "Findet auch optische Beschreibungen der Verpackung: 'tier', 'totenkopf', "
+            "'drache', 'frucht melone' etc. ('das Liquid mit dem Tier drauf')."
         ),
         "input_schema": {
             "type": "object",

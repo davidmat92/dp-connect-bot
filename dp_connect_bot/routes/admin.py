@@ -502,6 +502,22 @@ def admin_notifications():
         return jsonify(ok=False, error="Internal error"), 500
 
 
+@admin_bp.route("/admin/visual-index", methods=["POST"])
+def admin_visual_index():
+    """Indexiert die naechsten N Produktbilder (Claude Vision, einmalig)."""
+    if not _require_admin():
+        return jsonify(ok=False, error="Unauthorized"), 401
+    try:
+        from dp_connect_bot.services.visual_index import index_batch
+        data = request.get_json() or {}
+        batch = min(int(data.get("batch", 20)), 50)
+        result = index_batch(batch)
+        return jsonify(ok=True, **result)
+    except Exception as e:
+        log.error(f"[admin_visual_index] Error: {e}")
+        return jsonify(ok=False, error="Internal error"), 500
+
+
 @admin_bp.route("/admin/config", methods=["GET", "POST"])
 def admin_config():
     """Get or update global bot configuration."""
