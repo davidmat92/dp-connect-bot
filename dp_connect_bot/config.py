@@ -35,6 +35,10 @@ WEBCHAT_SECRET = os.environ.get("WEBCHAT_SECRET", "dpconnect_webchat_secret_2024
 # Admin Dashboard API
 ADMIN_API_KEY = os.environ.get("ADMIN_API_KEY", "")
 
+# Geheimes Reset-Keyword: loescht die eigene Session in jedem Kanal (fuer Tests).
+# Leer = Funktion deaktiviert. Nur in Server-.env setzen, nie committen!
+BOT_RESET_KEYWORD = os.environ.get("BOT_RESET_KEYWORD", "")
+
 # OpenAI API (Whisper Voice-to-Text)
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 

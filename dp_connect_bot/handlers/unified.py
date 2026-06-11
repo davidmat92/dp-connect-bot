@@ -56,6 +56,15 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
     if not ch_cfg["enabled"]:
         return BotResponse(text=ch_cfg["disabled_message"])
 
+    # Geheimes Reset-Keyword (Tests): Session loeschen, frisch starten
+    from dp_connect_bot.config import BOT_RESET_KEYWORD
+    if BOT_RESET_KEYWORD and text.strip().lower() == BOT_RESET_KEYWORD.lower():
+        session_manager.delete(chat_id)
+        log.info(f"[{channel}:{chat_id}] Session per Reset-Keyword geloescht")
+        return BotResponse(
+            text="🔄 Session zurückgesetzt! Schreib mir einfach, dann starten wir von vorne."
+        )
+
     session = session_manager.get(chat_id, archive_callback=archive_session)
     session["channel"] = channel
 
