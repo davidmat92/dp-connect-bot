@@ -16,12 +16,19 @@ PRODUCT_KEYWORDS = {
     "was habt ihr", "was gibt es", "zeig mir", "sortiment",
     "elf", "fler", "lost", "ske", "rand m", "al fakher",
     "nochmal", "nachbestellen", "das gleiche", "wie letztes mal",
+    # Sortiments-/Kauf-Signale (vage Anfragen sollen NICHT im Menü landen)
+    "ohne nikotin", "nikotin", "fruchtig", "geschmack", "geschmäcker",
+    "sorte", "sorten", "habt ihr", "hast du", "gibt es", "gibts", "gibt's",
+    "auf lager", "lieferbar", "verfügbar", "verfuegbar", "vorrätig",
+    "kostet", "preis", "preise", "angebot", "für den laden", "fuer den laden",
+    "kiosk", "empfehlung", "empfehlen", "bestseller", "was neues", "neuheiten",
 }
 
 # Support-Signale fuer Smart Detection
 SUPPORT_KEYWORDS = {
     "wo bleibt", "wo ist meine bestellung", "bestellung verfolgen",
     "tracking", "sendungsverfolgung", "lieferstatus",
+    "paket", "verschickt", "versandt", "meine lieferung", "versand status",
     "einloggen", "login", "anmelden", "kann mich nicht einloggen",
     "passwort", "kennwort", "registrierung", "registrieren",
     "keine zugangsdaten", "zugangsdaten",

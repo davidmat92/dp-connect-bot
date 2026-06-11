@@ -45,7 +45,7 @@ _API_HEADERS = {
 }
 
 
-def _api_call(system, messages, tools=None, max_tokens=1024):
+def _api_call(system, messages, tools=None, max_tokens=2000):
     """Low-level Anthropic API call. Returns parsed JSON or None."""
     if not ANTHROPIC_API_KEY:
         return None
