@@ -14,7 +14,7 @@ webchat_bp = Blueprint("webchat", __name__)
 _init_hits = {}  # {ip: [timestamps]} — Flood-Schutz (pro Worker, reicht als Bremse)
 
 
-def _init_flood(ip: str, limit: int = 20, window: int = 3600) -> bool:
+def _init_flood(ip: str, limit: int = 50, window: int = 3600) -> bool:
     import time as _time
     now = _time.time()
     hits = [t for t in _init_hits.get(ip, []) if now - t < window]
