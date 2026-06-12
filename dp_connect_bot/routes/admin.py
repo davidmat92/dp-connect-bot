@@ -502,6 +502,19 @@ def admin_notifications():
         return jsonify(ok=False, error="Internal error"), 500
 
 
+@admin_bp.route("/admin/wa-flush", methods=["POST"])
+def admin_wa_flush():
+    """Gepufferte WhatsApp-Sends nachliefern (nach Meta-Stoerung)."""
+    if not _require_admin():
+        return jsonify(ok=False, error="Unauthorized"), 401
+    try:
+        from dp_connect_bot.services.send_queue import flush
+        return jsonify(ok=True, **flush())
+    except Exception as e:
+        log.error(f"[admin_wa_flush] Error: {e}")
+        return jsonify(ok=False, error="Internal error"), 500
+
+
 @admin_bp.route("/admin/cleanup-empty-sessions", methods=["POST"])
 def admin_cleanup_empty_sessions():
     """Loescht leere Web-Sessions (0 Nachrichten) — Crawler-Muell."""

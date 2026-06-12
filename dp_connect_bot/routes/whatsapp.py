@@ -32,6 +32,11 @@ def whatsapp_webhook():
         if not payload:
             return jsonify(ok=True), 200
 
+        # Gepufferte Sends nachliefern (nach Meta-Stoerung)
+        from dp_connect_bot.services.send_queue import flush, pending_count
+        if pending_count():
+            flush()
+
         for entry in payload.get("entry", []):
             for change in entry.get("changes", []):
                 value = change.get("value", {})

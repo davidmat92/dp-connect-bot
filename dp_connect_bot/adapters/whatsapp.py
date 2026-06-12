@@ -150,11 +150,28 @@ class WhatsAppAdapter(ChannelAdapter):
             )
             if not resp.ok:
                 log.error(f"WhatsApp send error: {resp.text}")
+                self._maybe_enqueue(resp, payload)
                 return False
             return True
         except Exception as e:
             log.error(f"WhatsApp send error: {e}")
+            from dp_connect_bot.services.send_queue import enqueue
+            enqueue(payload)
             return False
+
+    @staticmethod
+    def _maybe_enqueue(resp, payload):
+        """API-/Auth-Fehler puffern (Meta-Stoerung) — Empfaenger-Fehler nicht."""
+        try:
+            err = resp.json().get("error", {})
+        except Exception:
+            err = {}
+        # 131026/131030: Empfaenger kein WhatsApp-Nutzer / nicht erlaubt,
+        # 100: ungueltige Parameter → Retry zwecklos
+        if err.get("code") in (131026, 131030, 100):
+            return
+        from dp_connect_bot.services.send_queue import enqueue
+        enqueue(payload)
 
     def _build_flavor_list(self, parent_id):
         """Build WhatsApp list menu with flavors (max 10 rows)."""

@@ -40,3 +40,4 @@ Thumbs.db
 .claude/
 bot.py
 .last_deploy
+wa_send_queue.json
