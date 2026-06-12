@@ -73,10 +73,19 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
     if verif.enabled() and not session.get("verified"):
         # Frueher verifiziert? (ueberlebt Session-Ablauf — wichtig fuer Telegram)
         stored = verif.get_stored_verification(chat_id)
-        if stored:
+        if stored and stored.get("customer_id"):
             session["verified"] = stored
             if stored.get("name") and not session.get("customer_name"):
                 session["customer_name"] = stored["name"]
+    # Selbstheilung: Verifizierungen ohne customer_id (Alt-Bug) neu matchen,
+    # sonst wird der Chat-Checkout nicht angeboten
+    if verif.enabled() and channel == "whatsapp":
+        v = session.get("verified")
+        if v and not v.get("customer_id"):
+            result = verif.lookup_phone(chat_id.replace("wa_", ""))
+            if result.get("found"):
+                verif.mark_verified(session, result["customer"], chat_id=chat_id)
+                log.info(f"[{channel}:{chat_id}] Verifizierung selbstgeheilt (Kunde {result['customer'].get('id')})")
     if verif.enabled() and not session.get("verified"):
         # WhatsApp: verifizierte Absendernummer automatisch matchen (einmalig)
         if channel == "whatsapp" and not session.get("verify_phone_checked"):
@@ -184,8 +193,16 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
         session_manager.save(chat_id, session)
         return resp
 
-    if stripped.startswith("/hilfe") or stripped.startswith("/help"):
-        return handle_help()
+    if stripped.startswith("/hilfe") or stripped.startswith("/help") or stripped.startswith("/anleitung"):
+        from dp_connect_bot.handlers.commands import handle_anleitung
+        return handle_anleitung(channel)
+
+    # Stichwort "Anleitung" — jederzeit abrufbar (alle Kanaele)
+    if stripped.lower() in ("anleitung", "anleitung bitte", "zeig mir die anleitung", "was kannst du", "was kannst du alles"):
+        from dp_connect_bot.handlers.commands import handle_anleitung
+        session["anleitung_offered"] = True
+        session_manager.save(chat_id, session)
+        return handle_anleitung(channel)
 
     # --- Callback-like strings from WhatsApp/channel button clicks ---
     # WhatsApp sends button IDs as regular text, route them to callback handler
@@ -309,6 +326,18 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
         session["contact_button_shown"] = True
         clean_text += "\n\n📱 Tipp: Teil einfach deine Nummer über den Button — geht am schnellsten!"
         keyboards = list(keyboards) + [Keyboard(type=KeyboardType.CONTACT_REQUEST)]
+
+    # Anleitung anbieten: beim Erstkontakt im Bestell-Modus fragen,
+    # spaeter gelegentlich dezent erinnern
+    if session.get("mode") == "order" and not session.get("anleitung_offered"):
+        session["anleitung_offered"] = True
+        clean_text += ("\n\n👋 Schreibst du zum ersten Mal mit mir? "
+                       "Soll ich dir kurz zeigen, was ich alles kann? "
+                       "Schreib einfach *Anleitung* 📖")
+    elif session.get("mode") == "order" and session.get("message_count", 0) in (15, 45) \
+            and not session.get(f"anleitung_hint_{session.get('message_count', 0)}"):
+        session[f"anleitung_hint_{session.get('message_count', 0)}"] = True
+        clean_text += "\n\n💡 _Tipp: Mit dem Stichwort *Anleitung* zeig ich dir alle meine Funktionen._"
 
     session_manager.save(chat_id, session)
 

@@ -48,14 +48,30 @@ def handle_reset(session):
 
 
 def handle_help():
-    """Handle /hilfe command."""
-    return BotResponse(
-        text=(
-            "Befehle:\n\n"
-            "/start - Neues Gespräch\n"
-            "/warenkorb - Warenkorb anzeigen\n"
-            "/reset - Warenkorb leeren\n"
-            "/hilfe - Diese Hilfe\n\n"
-            "Oder schreib einfach was du suchst!"
-        )
+    """Handle /hilfe command — zeigt die Kunden-Anleitung."""
+    return handle_anleitung()
+
+
+def handle_anleitung(channel="whatsapp"):
+    """Kunden-Anleitung (Stichwort 'Anleitung', /anleitung, /hilfe).
+
+    Inhalt liegt in prompts/anleitung.md — WICHTIG: bei jedem neuen
+    Bot-Feature dort ergaenzen!
+    """
+    import os
+    path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "prompts", "anleitung.md",
     )
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            text = fh.read().strip()
+    except Exception as e:
+        log.error(f"Anleitung laden fehlgeschlagen: {e}")
+        text = "Schreib mir einfach, was du brauchst — z.B. \"20 Elf Bar 800 Cherry\". 🛒"
+    if channel == "web":
+        # Webchat kann keine Sprachnachrichten/Fotos empfangen
+        text = "\n".join(
+            l for l in text.split("\n") if "🎤" not in l and "📸" not in l
+        )
+    return BotResponse(text=text)
