@@ -42,6 +42,11 @@ ADMIN_API_KEY = os.environ.get("ADMIN_API_KEY", "")
 # Leer = Funktion deaktiviert. Nur in Server-.env setzen, nie committen!
 BOT_RESET_KEYWORD = os.environ.get("BOT_RESET_KEYWORD", "")
 
+# B2B-Kundenverifizierung via tools.dpconnect.de (Telefon-Match / E-Mail-Code).
+# Leer = Verifizierung deaktiviert (alle sehen Preise, wie bisher).
+TOOLS_API_BASE = os.environ.get("TOOLS_API_BASE", "https://api.tools.dpconnect.de")
+TOOLS_VERIFY_TOKEN = os.environ.get("TOOLS_VERIFY_TOKEN", "")
+
 # OpenAI API (Whisper Voice-to-Text)
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 

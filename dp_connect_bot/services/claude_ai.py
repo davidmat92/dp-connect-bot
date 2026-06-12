@@ -216,6 +216,18 @@ def call_claude(session, user_message, product_context="", wc_cart=None):
     else:
         cart_str = "WARENKORB: Leer"
 
+    # Kundenstatus fuer die KI (Interessenten-Modus vs. verifizierter Kunde)
+    from dp_connect_bot.services.verification import is_verified, strip_prices as _strip_prices
+    _verified = is_verified(session)
+    if _verified:
+        v = session.get("verified") or {}
+        who = ", ".join(x for x in [v.get("name"), v.get("firma")] if x)
+        status_str = f"KUNDENSTATUS: VERIFIZIERTER B2B-KUNDE{' (' + who + ')' if who else ''}"
+    else:
+        status_str = ("KUNDENSTATUS: NICHT VERIFIZIERT (Interessenten-Modus) — "
+                      "KEINE Preise nennen, kein Warenkorb/Checkout!")
+    cart_str = f"[{status_str}]\n\n" + cart_str
+
     # Letzte Bestellung mitgeben — fuer "nochmal das gleiche"/"wie immer"
     last_order = session.get("last_order")
     if last_order:
@@ -247,6 +259,8 @@ def call_claude(session, user_message, product_context="", wc_cart=None):
                 if block.get("type") == "tool_use":
                     log.info(f"Order tool call: {block['name']}({json.dumps(block.get('input', {}), ensure_ascii=False)[:200]})")
                     result = _execute_order_tool(block["name"], block.get("input", {}))
+                    if not _verified:
+                        result = _strip_prices(result)
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": block["id"],

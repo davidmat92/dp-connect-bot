@@ -26,6 +26,18 @@ def process_cart_actions(session, ai_response):
     clean = re.sub(r"\s*```cart_action\n.*?\n```\s*", "\n\n", ai_response, flags=re.DOTALL).strip()
     clean = re.sub(r"\n{3,}", "\n\n", clean)
 
+    # Harte Sperre: Unverifizierte koennen nicht bestellen (injection-sicher,
+    # haengt nicht am Wohlverhalten des Modells)
+    from dp_connect_bot.services.verification import is_verified
+    if not is_verified(session):
+        if matches:
+            log.warning("Cart-Actions von unverifizierter Session verworfen")
+            clean += "\n\n🔒 Bestellen geht erst nach kurzer Verifizierung als DP-Connect-Kunde."
+        # Keyboards mit Preisen ebenfalls unterdruecken
+        ai_response = re.sub(r"\[SHOW_(FLAVORS|QUANTITIES):\d+\]", "", ai_response)
+        clean = re.sub(r"\s*\[SHOW_(FLAVORS|QUANTITIES):\d+\]\s*", " ", clean).strip()
+        matches = []
+
     keyboards = []
     wc_actions = []
 
@@ -141,10 +153,22 @@ def process_cart_actions(session, ai_response):
                 if session["cart"]:
                     session["status"] = "checkout"
                     session["last_order"] = [dict(i) for i in session["cart"]]
-                    url = generate_checkout_url(session["cart"])
                     clean += "\n\n" + format_cart(session)
-                    if url:
-                        clean += "\n\nDirekt zum Checkout:\n" + url
+                    # Magic-Checkout fuer verifizierte Kunden: Link loggt ein,
+                    # fuellt den Warenkorb und landet direkt auf der Kasse
+                    url = None
+                    verified = session.get("verified") or {}
+                    if verified.get("email"):
+                        from dp_connect_bot.services.woocommerce import request_checkout_token
+                        url = request_checkout_token(verified["email"], session["cart"])
+                        if url:
+                            clean += ("\n\n✨ Dein persönlicher Bestell-Link "
+                                      "(loggt dich automatisch ein, Warenkorb ist schon gefüllt):\n" + url +
+                                      "\n_Gültig für 15 Minuten._")
+                    if not url:
+                        url = generate_checkout_url(session["cart"])
+                        if url:
+                            clean += "\n\nDirekt zum Checkout:\n" + url
                 else:
                     clean += "\n\nDein Warenkorb ist noch leer."
 

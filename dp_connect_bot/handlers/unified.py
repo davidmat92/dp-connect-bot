@@ -68,6 +68,70 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
     session = session_manager.get(chat_id, archive_callback=archive_session)
     session["channel"] = channel
 
+    # --- B2B-Verifizierung (Preise nur fuer registrierte Kunden) ---
+    from dp_connect_bot.services import verification as verif
+    if verif.enabled() and not session.get("verified"):
+        # WhatsApp: verifizierte Absendernummer automatisch matchen (einmalig)
+        if channel == "whatsapp" and not session.get("verify_phone_checked"):
+            result = verif.lookup_phone(chat_id.replace("wa_", ""))
+            if result.get("found"):
+                verif.mark_verified(session, result["customer"])
+                log.info(f"[{channel}:{chat_id}] Auto-verifiziert via Telefon-Match (Kunde {result['customer'].get('id')})")
+            if not result.get("error"):
+                session["verify_phone_checked"] = True
+
+        # E-Mail-Code-Flow — nur im Bestell-Kontext, nicht im Support
+        # (dort fragt der Support-Bot selbst nach E-Mails)
+        if not session.get("verified") and session.get("mode") in (None, "order", "choosing"):
+            code_match = verif.CODE_RE.match(text)
+            if session.get("verify_pending_email") and code_match:
+                res = verif.check_code(session["verify_pending_email"], code_match.group(1))
+                if res.get("valid"):
+                    verif.mark_verified(session, res["customer"])
+                    session["mode"] = "order"
+                    name = res["customer"].get("name", "")
+                    session_manager.save(chat_id, session)
+                    return BotResponse(
+                        text=(f"✅ Verifiziert{', ' + name if name else ''}! 🎉\n\n"
+                              "Ab jetzt siehst du alle Preise und kannst direkt bestellen. "
+                              "Was brauchst du? 🛒")
+                    )
+                reason = res.get("reason", "")
+                session_manager.save(chat_id, session)
+                if reason in ("expired_or_missing", "too_many_attempts"):
+                    session.pop("verify_pending_email", None)
+                    return BotResponse(
+                        text="⏰ Der Code ist abgelaufen. Schick mir einfach nochmal deine E-Mail-Adresse, dann bekommst du einen neuen."
+                    )
+                return BotResponse(text="❌ Der Code stimmt leider nicht. Schau nochmal in die E-Mail und probier's erneut!")
+
+            email_match = verif.EMAIL_RE.search(text)
+            if email_match and len(text.strip()) < 60:
+                email = email_match.group(0).lower()
+                res = verif.send_code(email)
+                session_manager.save(chat_id, session)
+                if res.get("sent"):
+                    session["verify_pending_email"] = email
+                    session_manager.save(chat_id, session)
+                    return BotResponse(
+                        text=(f"📧 Ich hab dir einen 6-stelligen Code an *{email}* geschickt!\n\n"
+                              "Tipp ihn einfach hier ein, dann bist du verifiziert. "
+                              "(Schau ggf. auch im Spam-Ordner)")
+                    )
+                if res.get("inactive"):
+                    return BotResponse(
+                        text=("Dein Account ist noch nicht freigeschaltet — du bekommst eine E-Mail, "
+                              "sobald es so weit ist! Meld dich gern bei Davides Team, falls es eilt. 🙏")
+                    )
+                if res.get("error"):
+                    return BotResponse(text="Da hat technisch was geklemmt — probier's gleich nochmal! 🙏")
+                return BotResponse(
+                    text=(f"Mit *{email}* finde ich leider kein Kundenkonto. 🤔\n\n"
+                          "Vielleicht eine andere E-Mail? Oder noch kein Kunde? "
+                          "Registrier dich kostenlos: https://dpconnect.de/kunde-werden/ — "
+                          "nach der Freischaltung siehst du alle Preise!")
+                )
+
     # Store user info
     if user_info and not session["customer_name"]:
         name = user_info.get("first_name", "")
@@ -224,6 +288,10 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
         product_context = ""
     else:
         product_context = build_product_context(text)
+
+    # Unverifizierte Kontakte sehen keine Preise (harter Filter, nicht nur Prompt)
+    if not verif.is_verified(session):
+        product_context = verif.strip_prices(product_context)
 
     ai_response = call_claude(session, text, product_context, wc_cart=wc_cart)
     clean_text, keyboards, wc_actions = process_cart_actions(session, ai_response)

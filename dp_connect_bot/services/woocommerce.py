@@ -292,3 +292,31 @@ class WooCommerceClient:
 
 # Singleton instance
 wc_client = WooCommerceClient()
+
+
+def request_checkout_token(email, cart):
+    """Holt einen Magic-Checkout-Link von WordPress (Einmal-Token, 15 Min).
+
+    Der Kunde klickt → ist automatisch eingeloggt, Warenkorb gefuellt,
+    direkt auf der Kasse. Gibt None zurueck wenn nicht moeglich.
+    """
+    if not WP_BOT_SECRET or not email:
+        return None
+    try:
+        resp = requests.post(
+            f"{WOOCOMMERCE_URL}/wp-json/dp/v1/bot-checkout-token",
+            json={
+                "email": email,
+                "cart": [{"id": i["product_id"], "qty": i["quantity"]} for i in cart],
+            },
+            headers={"X-Bot-Secret": WP_BOT_SECRET, "Content-Type": "application/json"},
+            timeout=15,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get("ok") and data.get("url"):
+                return data["url"]
+        log.warning(f"checkout-token: HTTP {resp.status_code}")
+    except Exception as e:
+        log.error(f"checkout-token fehlgeschlagen: {e}")
+    return None

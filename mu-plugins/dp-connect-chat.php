@@ -764,3 +764,77 @@ add_action('wp_footer', function() {
     </script>
     <?php
 }, 99);
+// ============================================================
+// Magic-Checkout: Bot erstellt Einmal-Token → Kunde klickt Link →
+// automatisch eingeloggt + Warenkorb gefuellt + direkt auf der Kasse.
+// Zweiphasig: Phase 1 setzt das Auth-Cookie und redirectet auf sich
+// selbst, Phase 2 (authentifiziert) fuellt den WC-Warenkorb.
+// ============================================================
+add_action('rest_api_init', function () {
+    register_rest_route('dp/v1', '/bot-checkout-token', [
+        'methods'             => 'POST',
+        'permission_callback' => function ($request) {
+            return defined('DP_BOT_SECRET')
+                && hash_equals(DP_BOT_SECRET, (string) $request->get_header('X-Bot-Secret'));
+        },
+        'callback'            => function (WP_REST_Request $req) {
+            $email = sanitize_email((string) $req->get_param('email'));
+            $user  = $email ? get_user_by('email', $email) : false;
+            if (!$user) {
+                return new WP_Error('dpc_no_user', 'Kein Kunde mit dieser E-Mail', ['status' => 404]);
+            }
+            $items = [];
+            foreach ((array) $req->get_param('cart') as $i) {
+                $pid = (int) (($i['id'] ?? 0) ?: ($i['product_id'] ?? 0));
+                $qty = max(1, (int) (($i['qty'] ?? 0) ?: ($i['quantity'] ?? 1)));
+                if ($pid) $items[] = ['id' => $pid, 'qty' => $qty];
+            }
+            $token = wp_generate_password(40, false, false);
+            set_transient('dpc_co_' . $token, ['user_id' => $user->ID, 'items' => $items], 15 * MINUTE_IN_SECONDS);
+            return rest_ensure_response(['ok' => true, 'url' => home_url('/?dpbot_checkout=' . $token)]);
+        },
+    ]);
+});
+
+add_action('template_redirect', function () {
+    if (empty($_GET['dpbot_checkout'])) return;
+    nocache_headers();
+    $token = preg_replace('/[^a-zA-Z0-9]/', '', (string) $_GET['dpbot_checkout']);
+    $data  = get_transient('dpc_co_' . $token);
+    if (!$data || empty($data['user_id'])) {
+        wc_add_notice('Der Bestell-Link ist abgelaufen. Frag den Chat einfach nochmal nach dem Checkout-Link! 🙂', 'notice');
+        wp_safe_redirect(home_url('/anmelden/'));
+        exit;
+    }
+    $user = get_user_by('id', (int) $data['user_id']);
+    if (!$user) { delete_transient('dpc_co_' . $token); wp_safe_redirect(home_url('/anmelden/')); exit; }
+
+    // Phase 1: einloggen, dann mit gesetztem Cookie erneut hierher
+    if (!is_user_logged_in() || get_current_user_id() !== $user->ID) {
+        wp_set_current_user($user->ID);
+        wp_set_auth_cookie($user->ID, true);
+        wp_safe_redirect(home_url('/?dpbot_checkout=' . $token));
+        exit;
+    }
+
+    // Phase 2 (authentifiziert): Token entwerten, Warenkorb fuellen, zur Kasse
+    delete_transient('dpc_co_' . $token);
+    if (function_exists('WC') && WC()->cart) {
+        WC()->cart->empty_cart();
+        foreach ((array) $data['items'] as $i) {
+            $pid = (int) $i['id'];
+            $qty = (int) $i['qty'];
+            $product = wc_get_product($pid);
+            if (!$product) continue;
+            if ($product->is_type('variation')) {
+                WC()->cart->add_to_cart($product->get_parent_id(), $qty, $pid);
+            } else {
+                WC()->cart->add_to_cart($pid, $qty);
+            }
+        }
+        wp_safe_redirect(wc_get_checkout_url());
+        exit;
+    }
+    wp_safe_redirect(home_url('/warenkorb/'));
+    exit;
+});

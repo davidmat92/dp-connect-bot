@@ -36,6 +36,13 @@ def webchat_init():
             })
             if not session.get("customer_name") and data.get("wp_display_name"):
                 session["customer_name"] = data["wp_display_name"]
+            # Eingeloggte Shop-Kunden sind automatisch verifiziert (B2B-Preise)
+            session["verified"] = {
+                "customer_id": data.get("wp_user_id"),
+                "name": data.get("wp_display_name", ""),
+                "firma": "",
+                "email": data.get("wp_email", ""),
+            }
         else:
             session["is_guest"] = True
 
