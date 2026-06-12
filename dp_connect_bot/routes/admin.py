@@ -502,6 +502,27 @@ def admin_notifications():
         return jsonify(ok=False, error="Internal error"), 500
 
 
+@admin_bp.route("/admin/cleanup-empty-sessions", methods=["POST"])
+def admin_cleanup_empty_sessions():
+    """Loescht leere Web-Sessions (0 Nachrichten) — Crawler-Muell."""
+    if not _require_admin():
+        return jsonify(ok=False, error="Unauthorized"), 401
+    try:
+        from dp_connect_bot.models.session import session_manager
+        deleted = 0
+        for chat_id, session in list(session_manager.get_all().items()):
+            if (session.get("channel") == "web"
+                    and session.get("message_count", 0) == 0
+                    and not session.get("conversation")):
+                session_manager.delete(chat_id)
+                deleted += 1
+        log.info(f"[admin_cleanup] {deleted} leere Web-Sessions geloescht")
+        return jsonify(ok=True, deleted=deleted)
+    except Exception as e:
+        log.error(f"[admin_cleanup] Error: {e}")
+        return jsonify(ok=False, error="Internal error"), 500
+
+
 @admin_bp.route("/admin/visual-index", methods=["POST"])
 def admin_visual_index():
     """Indexiert die naechsten N Produktbilder (Claude Vision, einmalig)."""

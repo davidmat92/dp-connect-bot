@@ -303,16 +303,27 @@ async function processWcActions(actions){
   }
 }
 
-(async function(){
-  const hadHistory=loadHistory();
-  const vid=localStorage.getItem("dp_visitor")||(()=>{const id=Date.now().toString(36)+Math.random().toString(36);localStorage.setItem("dp_visitor",id);return id})();
-  if(!chatId){try{const initData={visitor_id:vid};if(WP_USER){initData.wp_user_id=WP_USER.id;initData.wp_display_name=WP_USER.name;initData.wp_email=WP_USER.email;initData.wp_username=WP_USER.login;initData.customer_name=WP_USER.name}const r=await fetch(API+"/chat/init",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(initData)});const d=await r.json();if(d.ok)chatId=d.chat_id;saveHistory()}catch(e){}}
+let initPromise=null;
+async function ensureInit(){
+  // Lazy: Session erst beim echten Chat-Gebrauch anlegen — sonst erzeugt
+  // jeder Crawler-Pageview eine leere Session in der Bot-DB!
+  if(chatId)return;
+  if(initPromise)return initPromise;
+  initPromise=(async()=>{
+    const vid=localStorage.getItem("dp_visitor")||(()=>{const id=Date.now().toString(36)+Math.random().toString(36);localStorage.setItem("dp_visitor",id);return id})();
+    try{const initData={visitor_id:vid};if(WP_USER){initData.wp_user_id=WP_USER.id;initData.wp_display_name=WP_USER.name;initData.wp_email=WP_USER.email;initData.wp_username=WP_USER.login;initData.customer_name=WP_USER.name}const r=await fetch(API+"/chat/init",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(initData)});const d=await r.json();if(d.ok)chatId=d.chat_id;saveHistory()}catch(e){}
+  })();
+  return initPromise;
+}
+(function(){
+  loadHistory();
   if(WP_USER){pollWcCart();pollTimer=setInterval(pollWcCart,15000);}
 })();
 
 function hw(){if(!started){started=true;const w=$("'.$ids['welcome'].'");if(w){w.style.transition="all .3s";w.style.opacity="0";w.style.maxHeight="0";w.style.padding="0";w.style.overflow="hidden";setTimeout(()=>w.remove(),300)}saveHistory()}}
 
 async function send(t){
+  await ensureInit();
   const msg=t||$("'.$ids['input'].'").value.trim();if(!msg||!chatId||ld)return;if(!t)$("'.$ids['input'].'").value="";
   hw();addMsg(msg,"u");showT();ld=true;$("'.$ids['send'].'").disabled=true;
   try{const payload={chat_id:chatId,message:msg};if(lastWcCart&&lastWcCart.items)payload.wc_cart=lastWcCart.items;
@@ -324,6 +335,7 @@ async function send(t){
 }
 
 async function sAct(cb){
+  await ensureInit();
   if(!chatId)return;showT();
   try{const r=await fetch(API+"/chat/action",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({chat_id:chatId,callback:cb})});const d=await r.json();hideT();
   if(d.ok){if(d.text)addMsg(d.text,"b");if(d.keyboards&&d.keyboards.length)rKB(d.keyboards);
