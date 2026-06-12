@@ -17,6 +17,7 @@ venv/
 # Database files (live data, not in repo)
 products_snapshot.json
 visual_index.json
+verified_contacts.json
 sessions.db
 sessions.db-wal
 sessions.db-shm

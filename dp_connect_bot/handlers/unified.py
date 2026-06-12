@@ -71,11 +71,18 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
     # --- B2B-Verifizierung (Preise nur fuer registrierte Kunden) ---
     from dp_connect_bot.services import verification as verif
     if verif.enabled() and not session.get("verified"):
+        # Frueher verifiziert? (ueberlebt Session-Ablauf — wichtig fuer Telegram)
+        stored = verif.get_stored_verification(chat_id)
+        if stored:
+            session["verified"] = stored
+            if stored.get("name") and not session.get("customer_name"):
+                session["customer_name"] = stored["name"]
+    if verif.enabled() and not session.get("verified"):
         # WhatsApp: verifizierte Absendernummer automatisch matchen (einmalig)
         if channel == "whatsapp" and not session.get("verify_phone_checked"):
             result = verif.lookup_phone(chat_id.replace("wa_", ""))
             if result.get("found"):
-                verif.mark_verified(session, result["customer"])
+                verif.mark_verified(session, result["customer"], chat_id=chat_id)
                 log.info(f"[{channel}:{chat_id}] Auto-verifiziert via Telefon-Match (Kunde {result['customer'].get('id')})")
             if not result.get("error"):
                 session["verify_phone_checked"] = True
@@ -87,7 +94,7 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
             if session.get("verify_pending_email") and code_match:
                 res = verif.check_code(session["verify_pending_email"], code_match.group(1))
                 if res.get("valid"):
-                    verif.mark_verified(session, res["customer"])
+                    verif.mark_verified(session, res["customer"], chat_id=chat_id)
                     session["mode"] = "order"
                     name = res["customer"].get("name", "")
                     session_manager.save(chat_id, session)
@@ -295,6 +302,13 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
 
     ai_response = call_claude(session, text, product_context, wc_cart=wc_cart)
     clean_text, keyboards, wc_actions = process_cart_actions(session, ai_response)
+
+    # Unverifizierte Telegram-Nutzer: Nummer-teilen-Button anbieten (einmalig)
+    if (channel == "telegram" and not verif.is_verified(session)
+            and not session.get("contact_button_shown")):
+        session["contact_button_shown"] = True
+        clean_text += "\n\n📱 Tipp: Teil einfach deine Nummer über den Button — geht am schnellsten!"
+        keyboards = list(keyboards) + [Keyboard(type=KeyboardType.CONTACT_REQUEST)]
 
     session_manager.save(chat_id, session)
 

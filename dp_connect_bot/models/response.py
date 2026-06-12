@@ -15,6 +15,7 @@ class KeyboardType(Enum):
     CATEGORIES = "categories"
     REORDER_CONFIRM = "reorder_confirm"
     LOGIN_OPTIONS = "login_options"
+    CONTACT_REQUEST = "contact_request"  # Telegram: Nummer-teilen-Button
 
 
 @dataclass

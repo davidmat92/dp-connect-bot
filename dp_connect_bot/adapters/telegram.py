@@ -114,6 +114,16 @@ class TelegramAdapter(ChannelAdapter):
         if not keyboards:
             return None
 
+        # Nummer-teilen braucht eine REGULAR-Tastatur (kein inline) und
+        # kann nicht gemischt werden
+        for kb in keyboards:
+            if kb.type == KeyboardType.CONTACT_REQUEST:
+                return {
+                    "keyboard": [[{"text": "📱 Nummer teilen & Preise freischalten", "request_contact": True}]],
+                    "one_time_keyboard": True,
+                    "resize_keyboard": True,
+                }
+
         all_buttons = []
         for kb in keyboards:
             if kb.type == KeyboardType.FLAVORS:

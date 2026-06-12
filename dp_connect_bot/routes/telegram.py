@@ -31,6 +31,41 @@ def telegram_webhook():
             response = unified_handle_message(prefixed, text, user_info, channel="telegram")
             adapter.send_response(chat_id, response)
 
+        # --- Geteilter Kontakt (Nummer-teilen-Button → B2B-Verifizierung) ---
+        elif message and message.get("contact"):
+            chat_id = message["chat"]["id"]
+            contact = message["contact"]
+            from_id = (message.get("from") or {}).get("id")
+            # Nur die EIGENE Nummer akzeptieren (nicht weitergeleitete Kontakte)
+            if contact.get("user_id") != from_id:
+                adapter._send_message(chat_id, "Bitte teile deine eigene Nummer über den Button. 🙂")
+                return jsonify(ok=True), 200
+
+            from dp_connect_bot.services import verification as verif
+            from dp_connect_bot.models.session import session_manager
+            prefixed = adapter.prefixed_chat_id(chat_id)
+            session = session_manager.get(prefixed)
+            result = verif.lookup_phone(contact.get("phone_number", ""))
+            if result.get("found"):
+                verif.mark_verified(session, result["customer"], chat_id=prefixed)
+                session["mode"] = "order"
+                session_manager.save(prefixed, session)
+                name = result["customer"].get("name", "")
+                adapter._send_message(
+                    chat_id,
+                    f"✅ Verifiziert{', ' + name if name else ''}! 🎉\n\n"
+                    "Ab jetzt siehst du alle Preise und kannst direkt bestellen. Was brauchst du? 🛒",
+                )
+            else:
+                session_manager.save(prefixed, session)
+                adapter._send_message(
+                    chat_id,
+                    "Zu dieser Nummer finde ich leider kein Kundenkonto. 🤔\n\n"
+                    "Bist du mit einer anderen Nummer registriert? Dann schick mir deine "
+                    "*E-Mail-Adresse* — ich schicke dir einen Verifizierungscode!\n\n"
+                    "Noch kein Kunde? Kostenlos registrieren: https://dpconnect.de/kunde-werden/",
+                )
+
         # --- Voice / audio message ---
         elif message and (message.get("voice") or message.get("audio")):
             chat_id = message["chat"]["id"]
