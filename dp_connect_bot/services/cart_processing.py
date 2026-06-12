@@ -208,21 +208,54 @@ def build_quantity_keyboard(product_id):
 
 
 def format_cart(session):
-    """Formatiert den Warenkorb als Text."""
+    """Formatiert den Warenkorb chat-tauglich (WhatsApp/Telegram/Web).
+
+    Keine Markdown-Tabellen — die rendern in Messengern nicht!
+    """
     if not session["cart"]:
-        return "Warenkorb ist leer."
-    lines = ["🛒 Dein Warenkorb:\n"]
+        return "🛒 Dein Warenkorb ist noch leer."
+    lines = ["🛒 *Dein Warenkorb*", ""]
     total = 0.0
     for item in session["cart"]:
         price = parse_price(item.get("price"))
         subtotal = price * item["quantity"]
         total += subtotal
-        line = f"• {item['title']} x{item['quantity']}"
+        emoji = _cart_item_emoji(item)
+        lines.append(f"{emoji} *{item['title']}*")
         if price:
-            line += f" - {format_price_de(subtotal)}"
-        lines.append(line)
-    lines.append(f"\nGesamt (netto): {format_price_de(total)}")
+            lines.append(f"      {item['quantity']} Stk × {format_price_de(price)} = {format_price_de(subtotal)}")
+        else:
+            lines.append(f"      {item['quantity']} Stk")
+    lines.append("")
+    lines.append("➖➖➖➖➖➖➖➖")
+    lines.append(f"💰 *Gesamt: {format_price_de(total)}* (netto)")
+    if total >= 1000:
+        lines.append("🚚 Kostenloser Versand ✅")
+    elif total >= 850:
+        lines.append(f"🚚 Noch {format_price_de(1000 - total)} bis zum kostenlosen Versand!")
     return "\n".join(lines)
+
+
+def _cart_item_emoji(item):
+    """Passendes Emoji je Produkt (Geschmack/Kategorie), Fallback 🛍️."""
+    text = item.get("title", "").lower()
+    product = cache.get_product_by_id(item.get("product_id"))
+    if product:
+        text += " " + product.get("category", "").lower() + " " + product.get("geschmack", "").lower()
+    for words, emoji in (
+        (("watermelon", "melone"), "🍉"), (("cherry", "kirsch"), "🍒"),
+        (("peach", "pfirsich"), "🍑"), (("apple", "apfel"), "🍏"),
+        (("blueberry", "blaubeere", "berry", "beere"), "🫐"),
+        (("grape", "traube"), "🍇"), (("banana",), "🍌"), (("mango",), "🥭"),
+        (("lemon", "zitrone", "lime"), "🍋"), (("strawberry", "erdbeer"), "🍓"),
+        (("cola",), "🥤"), (("ice", "frozen", "cool"), "🧊"),
+        (("tabak", "shisha"), "💨"), (("kohle",), "🔥"),
+        (("liquid",), "💧"), (("pod",), "🔋"), (("vape", "puff"), "💨"),
+        (("snack", "chips", "schoko", "candy"), "🍬"), (("drink", "energy"), "🥤"),
+    ):
+        if any(w in text for w in words):
+            return emoji
+    return "🛍️"
 
 
 def format_cart_rich(session):

@@ -15,6 +15,15 @@ def markdown_to_chat(text):
         return text
     text = re.sub(r"\*\*(.+?)\*\*", r"*\1*", text, flags=re.DOTALL)
     text = re.sub(r"^#{1,5}\s*(.+)$", r"*\1*", text, flags=re.MULTILINE)
+    # Markdown-Tabellen → Zeilen (Messenger rendern keine Tabellen)
+    text = re.sub(r"^\s*\|[\s:\-|]+\|\s*$\n?", "", text, flags=re.MULTILINE)  # Trennzeilen
+    def _table_row(m):
+        cells = [c.strip() for c in m.group(0).strip().strip("|").split("|")]
+        cells = [c for c in cells if c]
+        if not cells:
+            return ""
+        return cells[0] + ("  —  " + " · ".join(cells[1:]) if len(cells) > 1 else "") + "\n"
+    text = re.sub(r"^\s*\|.+\|\s*$\n?", _table_row, text, flags=re.MULTILINE)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text
 
