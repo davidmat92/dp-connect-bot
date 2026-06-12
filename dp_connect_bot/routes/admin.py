@@ -502,6 +502,26 @@ def admin_notifications():
         return jsonify(ok=False, error="Internal error"), 500
 
 
+@admin_bp.route("/admin/photo-test", methods=["POST"])
+def admin_photo_test():
+    """Diagnose: Foto-Analyse + Suchergebnis fuer eine Bild-URL testen."""
+    if not _require_admin():
+        return jsonify(ok=False, error="Unauthorized"), 401
+    try:
+        import requests as _requests
+        from dp_connect_bot.services.photo_vision import describe_photo, build_photo_message
+        data = request.get_json() or {}
+        url = data.get("image_url", "")
+        resp = _requests.get(url, timeout=20)
+        resp.raise_for_status()
+        mime = resp.headers.get("Content-Type", "image/jpeg").split(";")[0]
+        desc = describe_photo(resp.content, mime)
+        return jsonify(ok=True, description=desc, message=build_photo_message(desc, data.get("caption", "")))
+    except Exception as e:
+        log.error(f"[admin_photo_test] Error: {e}")
+        return jsonify(ok=False, error=str(e)[:200]), 500
+
+
 @admin_bp.route("/admin/wa-flush", methods=["POST"])
 def admin_wa_flush():
     """Gepufferte WhatsApp-Sends nachliefern (nach Meta-Stoerung)."""

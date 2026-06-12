@@ -90,8 +90,25 @@ def whatsapp_webhook():
                             )
                             continue
 
+                    # --- Foto ("habt ihr das hier?") ---
+                    elif msg.get("type") == "image":
+                        log.info(f"[WA:{phone}] Foto empfangen")
+                        adapter.mark_read_typing(msg.get("id"))
+                        media_id = msg.get("image", {}).get("id")
+                        caption = msg.get("image", {}).get("caption", "")
+                        image_bytes, mime = _download_whatsapp_media(media_id)
+                        if not image_bytes:
+                            adapter._send_message(phone, "Das Foto konnte ich gerade nicht laden. 😅 Probier's nochmal oder beschreib mir das Produkt!")
+                            continue
+                        from dp_connect_bot.services.photo_vision import describe_photo, build_photo_message
+                        desc = describe_photo(image_bytes, mime)
+                        if not desc:
+                            adapter._send_message(phone, "Das Foto konnte ich nicht auswerten. 😅 Beschreib mir das Produkt einfach kurz!")
+                            continue
+                        text = build_photo_message(desc, caption)
+
                     else:
-                        continue  # skip images, stickers, etc.
+                        continue  # skip stickers, etc.
 
                     log.info(f"[WA:{phone}] Message: {text}")
                     prefixed = adapter.prefixed_chat_id(phone)
@@ -102,3 +119,29 @@ def whatsapp_webhook():
     except Exception as e:
         log.error(f"WhatsApp webhook error: {e}", exc_info=True)
         return jsonify(ok=True), 200
+
+
+def _download_whatsapp_media(media_id):
+    """Laedt ein WhatsApp-Medium herunter. Gibt (bytes, mime) oder (None, None)."""
+    from dp_connect_bot.config import WHATSAPP_API, WHATSAPP_TOKEN
+    import requests as _requests
+    if not media_id or not WHATSAPP_TOKEN:
+        return None, None
+    try:
+        meta = _requests.get(
+            f"{WHATSAPP_API}/{media_id}",
+            headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}"},
+            timeout=10,
+        )
+        meta.raise_for_status()
+        info = meta.json()
+        url = info.get("url")
+        mime = info.get("mime_type", "image/jpeg")
+        if not url:
+            return None, None
+        data = _requests.get(url, headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}"}, timeout=30)
+        data.raise_for_status()
+        return data.content, mime
+    except Exception as e:
+        log.error(f"WhatsApp-Media-Download fehlgeschlagen: {e}")
+        return None, None

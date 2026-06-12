@@ -31,6 +31,30 @@ def telegram_webhook():
             response = unified_handle_message(prefixed, text, user_info, channel="telegram")
             adapter.send_response(chat_id, response)
 
+        # --- Foto ("habt ihr das hier?") ---
+        elif message and message.get("photo"):
+            chat_id = message["chat"]["id"]
+            user_info = message.get("from", {})
+            caption = message.get("caption", "")
+            # Groesste Variante nehmen (Telegram liefert mehrere Aufloesungen)
+            file_id = message["photo"][-1].get("file_id")
+            log.info(f"[TG:{chat_id}] Foto empfangen")
+            adapter.send_typing(chat_id)
+
+            image_bytes = _download_telegram_file(file_id)
+            if not image_bytes:
+                adapter._send_message(chat_id, "Das Foto konnte ich gerade nicht laden. 😅 Probier's nochmal oder beschreib mir das Produkt!")
+                return jsonify(ok=True), 200
+            from dp_connect_bot.services.photo_vision import describe_photo, build_photo_message
+            desc = describe_photo(image_bytes)
+            if not desc:
+                adapter._send_message(chat_id, "Das Foto konnte ich nicht auswerten. 😅 Beschreib mir das Produkt einfach kurz!")
+                return jsonify(ok=True), 200
+            text = build_photo_message(desc, caption)
+            prefixed = adapter.prefixed_chat_id(chat_id)
+            response = unified_handle_message(prefixed, text, user_info, channel="telegram")
+            adapter.send_response(chat_id, response)
+
         # --- Geteilter Kontakt (Nummer-teilen-Button → B2B-Verifizierung) ---
         elif message and message.get("contact"):
             chat_id = message["chat"]["id"]
@@ -114,3 +138,21 @@ def telegram_webhook():
     except Exception as e:
         log.error(f"Telegram webhook error: {e}", exc_info=True)
         return jsonify(ok=True), 200
+
+
+def _download_telegram_file(file_id):
+    """Laedt eine Telegram-Datei herunter. Gibt bytes oder None."""
+    from dp_connect_bot.config import TELEGRAM_API, TELEGRAM_TOKEN
+    import requests as _requests
+    if not file_id or not TELEGRAM_TOKEN:
+        return None
+    try:
+        resp = _requests.get(f"{TELEGRAM_API}/getFile", params={"file_id": file_id}, timeout=10)
+        resp.raise_for_status()
+        file_path = resp.json()["result"]["file_path"]
+        data = _requests.get(f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{file_path}", timeout=30)
+        data.raise_for_status()
+        return data.content
+    except Exception as e:
+        log.error(f"Telegram-File-Download fehlgeschlagen: {e}")
+        return None
