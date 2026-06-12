@@ -81,6 +81,14 @@ class WebchatAdapter(ChannelAdapter):
             buttons.append({"text": "🔑 Login-Probleme", "callback_data": "mode_login"})
             buttons.append({"text": "📞 Kundenservice", "callback_data": "mode_support"})
             return {"type": "mode_choice", "buttons": buttons}
+        elif kb.type == KeyboardType.CHAT_ORDER:
+            return {
+                "type": "chat_order",
+                "buttons": [
+                    {"text": btn.text, "callback_data": btn.callback_data}
+                    for btn in kb.buttons
+                ],
+            }
         elif kb.type == KeyboardType.LOGIN_OPTIONS:
             return {
                 "type": "login_options",

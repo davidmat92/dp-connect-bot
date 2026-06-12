@@ -154,21 +154,43 @@ def process_cart_actions(session, ai_response):
                     session["status"] = "checkout"
                     session["last_order"] = [dict(i) for i in session["cart"]]
                     clean += "\n\n" + format_cart(session)
-                    # Magic-Checkout fuer verifizierte Kunden: Link loggt ein,
-                    # fuellt den Warenkorb und landet direkt auf der Kasse
-                    url = None
+
+                    # Chat-Direktbestellung (Toggle: Bot-System → Einstellungen):
+                    # verifizierte Kunden bestellen ohne Website
+                    from dp_connect_bot.services.bot_config import load_bot_config
                     verified = session.get("verified") or {}
-                    if verified.get("email"):
-                        from dp_connect_bot.services.woocommerce import request_checkout_token
-                        url = request_checkout_token(verified["email"], session["cart"])
-                        if url:
-                            clean += ("\n\n✨ Dein persönlicher Bestell-Link "
-                                      "(loggt dich automatisch ein, Warenkorb ist schon gefüllt):\n" + url +
-                                      "\n_Gültig für 15 Minuten._")
-                    if not url:
-                        url = generate_checkout_url(session["cart"])
-                        if url:
-                            clean += "\n\nDirekt zum Checkout:\n" + url
+                    offered_chat_order = False
+                    if load_bot_config().get("chat_checkout_enabled") and verified.get("customer_id"):
+                        from dp_connect_bot.services.chat_order import get_customer_order_info
+                        info = get_customer_order_info(verified["customer_id"])
+                        if info.get("ok") and info.get("has_address"):
+                            session["pending_chat_order"] = {
+                                "rechnung_erlaubt": bool(info.get("rechnung_erlaubt")),
+                            }
+                            clean += "\n\n📦 *Lieferung an:*\n" + info.get("address_text", "")
+                            clean += "\n\nWie möchtest du abschließen? 👇"
+                            order_buttons = []
+                            if info.get("rechnung_erlaubt"):
+                                order_buttons.append(Button(text="🧾 Auf Rechnung", callback_data="chatorder_rechnung"))
+                            order_buttons.append(Button(text="💳 Vorkasse", callback_data="chatorder_vorkasse"))
+                            order_buttons.append(Button(text="🌐 Im Browser zahlen", callback_data="chatorder_link"))
+                            keyboards.append(Keyboard(type=KeyboardType.CHAT_ORDER, buttons=order_buttons))
+                            offered_chat_order = True
+
+                    if not offered_chat_order:
+                        # Magic-Checkout-Link fuer verifizierte Kunden, sonst Standard-Link
+                        url = None
+                        if verified.get("email"):
+                            from dp_connect_bot.services.woocommerce import request_checkout_token
+                            url = request_checkout_token(verified["email"], session["cart"])
+                            if url:
+                                clean += ("\n\n✨ Dein persönlicher Bestell-Link "
+                                          "(loggt dich automatisch ein, Warenkorb ist schon gefüllt):\n" + url +
+                                          "\n_Gültig für 15 Minuten._")
+                        if not url:
+                            url = generate_checkout_url(session["cart"])
+                            if url:
+                                clean += "\n\nDirekt zum Checkout:\n" + url
                 else:
                     clean += "\n\nDein Warenkorb ist noch leer."
 

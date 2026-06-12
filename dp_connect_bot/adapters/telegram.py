@@ -154,6 +154,11 @@ class TelegramAdapter(ChannelAdapter):
                 all_buttons.append([
                     {"text": "📞 Kundenservice", "callback_data": "mode_support"},
                 ])
+            elif kb.type == KeyboardType.CHAT_ORDER:
+                for btn in kb.buttons:
+                    all_buttons.append([
+                        {"text": btn.text, "callback_data": btn.callback_data}
+                    ])
             elif kb.type == KeyboardType.LOGIN_OPTIONS:
                 for btn in kb.buttons:
                     all_buttons.append([

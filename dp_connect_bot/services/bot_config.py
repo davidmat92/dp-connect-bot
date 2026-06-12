@@ -39,6 +39,7 @@ DEFAULT_DISABLED_MESSAGE = (
 
 DEFAULTS = {
     "order_enabled": True,
+    "chat_checkout_enabled": False,  # Bestellung direkt im Chat abschliessen
     "channels": {},
 }
 

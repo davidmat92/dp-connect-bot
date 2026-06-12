@@ -588,6 +588,8 @@ def admin_config():
         config = load_bot_config()
         if "order_enabled" in data:
             config["order_enabled"] = bool(data["order_enabled"])
+        if "chat_checkout_enabled" in data:
+            config["chat_checkout_enabled"] = bool(data["chat_checkout_enabled"])
         # Per-channel overrides: {"channels": {"telegram": {"enabled": false, ...}}}
         if isinstance(data.get("channels"), dict):
             channels_cfg = config.setdefault("channels", {})

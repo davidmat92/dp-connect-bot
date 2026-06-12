@@ -52,6 +52,12 @@ class WhatsAppAdapter(ChannelAdapter):
                 buttons.append({"label": "🔑 Login", "callback": "mode_login"})
                 buttons.append({"label": "📞 Service", "callback": "mode_support"})
                 break
+            elif kb.type == KeyboardType.CHAT_ORDER:
+                buttons = [
+                    {"label": btn.text[:20], "callback": btn.callback_data}
+                    for btn in kb.buttons[:3]
+                ]
+                break
             elif kb.type == KeyboardType.LOGIN_OPTIONS:
                 buttons = [
                     {"label": btn.text[:20], "callback": btn.callback_data}

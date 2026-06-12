@@ -360,6 +360,73 @@ def unified_handle_callback(chat_id, callback_data, channel="telegram"):
             answer_callback_text="🛒 Bestell-Modus!",
         )
 
+    elif callback_data in ("chatorder_rechnung", "chatorder_vorkasse", "chatorder_link"):
+        verified = session.get("verified") or {}
+        if not session.get("cart"):
+            session_manager.save(chat_id, session)
+            return BotResponse(text="Dein Warenkorb ist leer — pack erst was rein! 🛒",
+                               answer_callback_text="Warenkorb leer")
+
+        if callback_data == "chatorder_link":
+            # Lieber im Browser: Magic-Link wie gehabt
+            url = None
+            if verified.get("email"):
+                from dp_connect_bot.services.woocommerce import request_checkout_token
+                url = request_checkout_token(verified["email"], session["cart"])
+            if not url:
+                url = generate_checkout_url(session["cart"])
+            session_manager.save(chat_id, session)
+            return BotResponse(
+                text=("Alles klar! ✨ Dein persönlicher Bestell-Link "
+                      "(loggt dich automatisch ein):\n" + url + "\n_Gültig für 15 Minuten._")
+                if url else "Hmm, der Link klappt gerade nicht — versuch's gleich nochmal!",
+                answer_callback_text="Link kommt!",
+            )
+
+        # Direktbestellung im Chat
+        if not verified.get("customer_id"):
+            session_manager.save(chat_id, session)
+            return BotResponse(text="Dafür musst du verifiziert sein — schick mir kurz deine E-Mail-Adresse!",
+                               answer_callback_text="Nicht verifiziert")
+        pending = session.get("pending_chat_order") or {}
+        method = "rechnung" if callback_data == "chatorder_rechnung" else "vorkasse"
+        if method == "rechnung" and not pending.get("rechnung_erlaubt"):
+            session_manager.save(chat_id, session)
+            return BotResponse(text="Kauf auf Rechnung ist für dein Konto noch nicht freigeschaltet — nimm Vorkasse oder frag bei Davides Team an. 🙏",
+                               answer_callback_text="Nicht freigeschaltet")
+
+        from dp_connect_bot.services.chat_order import create_order
+        res = create_order(verified["customer_id"], session["cart"], method, channel)
+        if res.get("ok"):
+            session["last_order"] = [dict(i) for i in session["cart"]]
+            session["cart"] = []
+            session["pending_chat_order"] = None
+            session["status"] = "ordered"
+            session_manager.save(chat_id, session)
+            track_event("chat_order_created", chat_id, channel, f"#{res.get('number')} {method}")
+            total = res.get("total", "")
+            if method == "rechnung":
+                pay_info = "Die Ware geht raus — die Rechnung kommt wie gewohnt per E-Mail. 🚚"
+            else:
+                pay_info = "Du bekommst gleich die Bestellbestätigung mit den Überweisungsdaten per E-Mail. Nach Zahlungseingang geht die Ware raus! 🚚"
+            return BotResponse(
+                text=(f"🎉 *Bestellung #{res.get('number')} ist drin!*\n\n"
+                      f"💰 {str(total).replace('.', ',')}€ ({res.get('payment')})\n"
+                      f"{pay_info}\n\n"
+                      "Danke für deine Bestellung! 🙌"),
+                answer_callback_text="Bestellt! 🎉",
+                wc_actions=[WcAction(action="clear")],
+            )
+        if res.get("forbidden"):
+            session_manager.save(chat_id, session)
+            return BotResponse(text="Kauf auf Rechnung ist für dein Konto nicht freigeschaltet — nimm Vorkasse. 🙏",
+                               answer_callback_text="Nicht freigeschaltet")
+        session_manager.save(chat_id, session)
+        return BotResponse(
+            text="Da hat was geklemmt — die Bestellung wurde NICHT angelegt. Versuch's nochmal oder nutze den Browser-Checkout. 🙏",
+            answer_callback_text="Fehler",
+        )
+
     elif callback_data == "mode_support":
         session["mode"] = "support"
         session["support_step"] = None

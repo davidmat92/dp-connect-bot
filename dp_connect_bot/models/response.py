@@ -16,6 +16,7 @@ class KeyboardType(Enum):
     REORDER_CONFIRM = "reorder_confirm"
     LOGIN_OPTIONS = "login_options"
     CONTACT_REQUEST = "contact_request"  # Telegram: Nummer-teilen-Button
+    CHAT_ORDER = "chat_order"            # Zahlart-Auswahl Chat-Direktbestellung
 
 
 @dataclass
