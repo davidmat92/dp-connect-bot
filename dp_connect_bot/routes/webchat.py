@@ -11,11 +11,29 @@ from dp_connect_bot.models.session import session_manager
 webchat_bp = Blueprint("webchat", __name__)
 
 
+_init_hits = {}  # {ip: [timestamps]} — Flood-Schutz (pro Worker, reicht als Bremse)
+
+
+def _init_flood(ip: str, limit: int = 20, window: int = 3600) -> bool:
+    import time as _time
+    now = _time.time()
+    hits = [t for t in _init_hits.get(ip, []) if now - t < window]
+    hits.append(now)
+    _init_hits[ip] = hits
+    if len(_init_hits) > 5000:  # Speicher-Bremse
+        _init_hits.clear()
+    return len(hits) > limit
+
+
 @webchat_bp.route("/chat/init", methods=["POST", "OPTIONS"])
 def webchat_init():
     if request.method == "OPTIONS":
         return "", 204
     try:
+        ip = request.headers.get("X-Real-IP", request.remote_addr or "?")
+        if _init_flood(ip):
+            log.warning(f"[webchat_init] Flood von {ip}")
+            return jsonify(ok=False, error="rate_limited"), 429
         data = request.get_json() or {}
         visitor_id = data.get("visitor_id", str(time.time()))
         chat_id = f"web_{hashlib.md5(visitor_id.encode()).hexdigest()[:12]}"

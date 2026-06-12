@@ -307,6 +307,27 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
         session_manager.save(chat_id, session)
         return resp
 
+    # --- Kosten-/Spamschutz vor dem AI-Call ---
+    # Tageslimit pro Session: unverifiziert knapp, verifiziert grosszuegig
+    from datetime import date as _date
+    today = _date.today().isoformat()
+    if session.get("ai_quota_date") != today:
+        session["ai_quota_date"] = today
+        session["ai_quota_used"] = 0
+    quota = 200 if verif.is_verified(session) else 30
+    if session.get("ai_quota_used", 0) >= quota:
+        session_manager.save(chat_id, session)
+        log.warning(f"[{channel}:{chat_id}] Tageslimit erreicht ({quota})")
+        return BotResponse(
+            text=("Wow, das war heute ganz schön viel! 😅 Mein Tageslimit für dieses "
+                  "Gespräch ist erreicht — morgen geht's normal weiter. "
+                  "Dringend? Davides Team: 📞 +49 221 650 878 78")
+        )
+    session["ai_quota_used"] = session.get("ai_quota_used", 0) + 1
+    # Ueberlange Nachrichten kappen (Kontext-/Kostenschutz)
+    if len(text) > 2000:
+        text = text[:2000]
+
     # --- AI Response ---
     if lower_text in CONFIRM_ALL:
         product_context = ""
