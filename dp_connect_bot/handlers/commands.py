@@ -71,7 +71,9 @@ def handle_anleitung(channel="whatsapp"):
         text = "Schreib mir einfach, was du brauchst — z.B. \"20 Elf Bar 800 Cherry\". 🛒"
     if channel == "web":
         # Webchat kann keine Sprachnachrichten/Fotos empfangen
+        import re
         text = "\n".join(
             l for l in text.split("\n") if "🎤" not in l and "📸" not in l
         )
+        text = re.sub(r"\n{3,}", "\n\n", text)
     return BotResponse(text=text)
