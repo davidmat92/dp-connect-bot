@@ -52,7 +52,9 @@ SELF_SERVICE_KEYWORDS = {
     "bestellhistorie", "meine rechnung", "rechnung schicken",
     "schick mir die rechnung", "schick mir meine rechnung", "rechnung zur",
     "rechnung von", "rechnung haben", "bestellstatus", "was hab ich bestellt",
-    "was habe ich bestellt",
+    "was habe ich bestellt", "offene rechnung", "offene rechnungen",
+    "offene posten", "was muss ich noch zahlen", "was schulde ich",
+    "meine rechnungen", "welche rechnungen",
 }
 
 # Signale, die AUCH mitten im Bestell-Modus zum Support wechseln —

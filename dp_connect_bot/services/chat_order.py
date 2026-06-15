@@ -96,3 +96,14 @@ def get_invoice_link(customer_id, order_id=None) -> dict:
     except Exception as e:
         log.error(f"chat_order invoice-link fehlgeschlagen: {e}")
         return {"ok": False, "error": True}
+
+
+def get_invoices(customer_id, only_open=True) -> dict:
+    """Rechnungen mit Zahlstatus. {ok, invoices, total_open, ...} oder {error}."""
+    try:
+        return _post("/api/bot-order/invoices", {
+            "customer_id": int(customer_id), "only_open": bool(only_open),
+        })
+    except Exception as e:
+        log.error(f"chat_order invoices fehlgeschlagen: {e}")
+        return {"ok": False, "error": True}

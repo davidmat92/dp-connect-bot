@@ -23,6 +23,7 @@ Ich bin rund um die Uhr für dich da — so holst du das Meiste raus:
 • "Zeig mir meine letzten Bestellungen" (auch ältere — sag "zeig mir mehr")
 • "Was war in Bestellung 8511?" — auch alte Bestellungen im Detail
 • "Schick mir die Rechnung zur letzten Bestellung"
+• "Welche Rechnungen sind noch offen?" — dein Zahlstatus auf einen Blick
 
 💳 *Kasse* — sag einfach "Kasse" oder "bestellen":
 • Direkt hier im Chat abschließen (Rechnung oder Vorkasse)

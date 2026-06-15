@@ -166,6 +166,21 @@ ORDER_TOOLS = [
             },
         },
     },
+    {
+        "name": "list_my_invoices",
+        "description": (
+            "Zeigt die Rechnungen DES AKTUELLEN KUNDEN mit Zahlstatus (offen/bezahlt/ueberfaellig) "
+            "und offenem Betrag. Nutze es bei 'welche Rechnungen sind offen', 'was muss ich noch "
+            "zahlen', 'offene Posten'. Default nur offene; only_open=false zeigt auch bezahlte. "
+            "Nur fuer verifizierte Kunden."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "only_open": {"type": "boolean", "description": "Nur offene (Default true) oder alle."}
+            },
+        },
+    },
 ]
 
 
@@ -180,7 +195,7 @@ def _execute_order_tool(tool_name, tool_input, session=None):
         format_search_results, format_parent_with_variations, get_category_overview,
     )
     try:
-        if tool_name in ("lookup_my_orders", "get_invoice", "get_order_detail"):
+        if tool_name in ("lookup_my_orders", "get_invoice", "get_order_detail", "list_my_invoices"):
             verified = (session or {}).get("verified") or {}
             customer_id = verified.get("customer_id")
             if not customer_id:
@@ -225,6 +240,33 @@ def _execute_order_tool(tool_name, tool_input, session=None):
                     "order_not_found": "Diese Bestellnummer gibt es nicht.",
                 }
                 return reasons.get(res.get("reason"), "Konnte die Bestellung nicht laden.")
+
+            if tool_name == "list_my_invoices":
+                only_open = tool_input.get("only_open", True)
+                res = chat_order.get_invoices(customer_id, only_open)
+                if not res.get("ok"):
+                    if res.get("reason") == "no_easybill":
+                        return "Rechnungssystem gerade nicht erreichbar."
+                    return "Konnte die Rechnungen gerade nicht laden."
+                invs = res.get("invoices", [])
+                if not invs:
+                    return ("Du hast aktuell KEINE offenen Rechnungen — alles bezahlt! 🎉"
+                            if only_open else "Keine Rechnungen gefunden.")
+                state_de = {"open": "offen", "overdue": "überfällig", "partial": "teilweise bezahlt", "paid": "bezahlt"}
+                lines = []
+                for i in invs:
+                    due = ""
+                    d = i.get("days_until_due")
+                    if i["state"] == "overdue" and d is not None:
+                        due = f" (seit {abs(int(d))} Tagen fällig)"
+                    elif i["state"] in ("open", "partial") and d is not None and d >= 0:
+                        due = f" (fällig in {int(d)} Tagen)"
+                    betrag = f"{str(i['open']).replace('.', ',')}€ offen" if i["state"] != "paid" else "bezahlt"
+                    lines.append(f"Rechnung {i['invoice_number']} (zu Bestellung #{i['order_number']}) — "
+                                 f"{state_de.get(i['state'], i['state'])} — {betrag}{due}")
+                summe = res.get("total_open", 0)
+                footer = (f"\nOFFENE SUMME GESAMT: {str(summe).replace('.', ',')}€" if summe else "")
+                return "RECHNUNGEN DES KUNDEN:\n" + "\n".join(lines) + footer
 
             # get_invoice
             order_id = str(tool_input.get("order_id", "")).strip() or None
