@@ -386,7 +386,7 @@ def call_claude(session, user_message, product_context="", wc_cart=None):
     if not ANTHROPIC_API_KEY:
         return "Bot ist noch nicht konfiguriert (API Key fehlt). Bitte Admin kontaktieren."
 
-    messages = list(session["conversation"][-16:])
+    messages = list(session["conversation"][-24:])
 
     # Warenkorb IMMER mitschicken
     if wc_cart and isinstance(wc_cart, list) and len(wc_cart) > 0:
