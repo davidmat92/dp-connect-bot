@@ -283,19 +283,28 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
     _checkout_intent = lower_text in CHECKOUT_WORDS or any(
         w in lower_text.split() for w in ("kasse", "checkout", "bestellen", "abschließen", "abschliessen")
     )
+    # NUR ein REINER Checkout-Wunsch darf den Shortcut nehmen. Eine Nachricht
+    # mit konkretem Bestell-Inhalt ("20 elf bar 800 blueberry bestellen") traegt
+    # zwar "bestellen", ist aber eine Bestellung → muss zum AI-Flow, der das
+    # Produkt einpackt. Sonst bekaeme der Kunde faelschlich "Warenkorb ist leer".
+    _pure_checkout = (
+        lower_text in CHECKOUT_WORDS
+        or (_checkout_intent and len(lower_text.split()) <= 3
+            and not any(c.isdigit() for c in lower_text))
+    )
     # Bei aktiver Chat-Direktbestellung den Shortcut NICHT nehmen — sonst
     # umgeht der Standard-Link die Zahlart-Buttons. AI-Flow baut den Checkout.
     from dp_connect_bot.services.bot_config import load_bot_config
     _chat_checkout = (load_bot_config().get("chat_checkout_enabled")
                       and (session.get("verified") or {}).get("customer_id"))
-    if _checkout_intent and session.get("cart") and not _chat_checkout:
+    if _pure_checkout and session.get("cart") and not _chat_checkout:
         resp = handle_checkout(session, channel)
         if resp:
             track_event("checkout", chat_id, channel)
             session_manager.save(chat_id, session)
             return resp
     # Checkout-Wunsch bei LEEREM Warenkorb → freundlich statt Modus-Menue
-    if _checkout_intent and not session.get("cart"):
+    if _pure_checkout and not session.get("cart"):
         session["mode"] = "order"
         session_manager.save(chat_id, session)
         return BotResponse(

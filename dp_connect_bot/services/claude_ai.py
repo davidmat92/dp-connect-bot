@@ -466,7 +466,8 @@ def call_claude(session, user_message, product_context="", wc_cart=None):
             use_tools = ORDER_TOOLS if (rounds < 4 and budget_left) else None
             data = _api_call(SYSTEM_PROMPT, messages, tools=use_tools)
             if not data:
-                return "Da ist gerade was schiefgelaufen. Versuch's bitte nochmal!"
+                return ("Ups, da hakt gerade etwas auf meiner Seite 😬 Versuch's bitte gleich "
+                        "nochmal — oder ruf uns kurz an: +49 221 650 878 78, dann helfen wir dir direkt!")
 
         ai_text = "".join(b["text"] for b in data.get("content", []) if b.get("type") == "text")
 
@@ -492,7 +493,8 @@ def call_claude(session, user_message, product_context="", wc_cart=None):
 
     except Exception as e:
         log.error(f"Claude API Fehler: {e}")
-        return "Da ist gerade was schiefgelaufen. Versuch's nochmal!"
+        return ("Ups, da hakt gerade etwas auf meiner Seite 😬 Versuch's bitte gleich nochmal — "
+                "oder ruf uns kurz an: +49 221 650 878 78, dann helfen wir dir direkt!")
 
 
 # ============================================================
