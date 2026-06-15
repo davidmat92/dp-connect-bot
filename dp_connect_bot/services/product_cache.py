@@ -188,19 +188,57 @@ class ProductCache:
             for p in all_normalized:
                 sp = sonder.get(p["id"])
                 if sp:
-                    p["sonderpreis"], p["sonderpreis_min"] = sp
+                    p["staffel_tiers"] = sp                  # alle Stufen [(preis, min), ...]
+                    p["sonderpreis"], p["sonderpreis_min"] = sp[0]   # Stufe 1 (backward-compat)
                     hits += 1
             log.info(f"Sonderpreise aus Airtable angereichert: {hits} Produkte")
 
         available = [p for p in all_normalized if p["stock_status"] == "instock"]
         return available, all_normalized
 
+    # Staffelpreis-Stufen wie im Tools-System (tools.dpconnect.de/staffelpreise)
+    # gepflegt — Stufe 1 sind die Originalspalten, 2/3 mit Suffix. Der Bot
+    # orientiert sich an genau diesen Spalten, damit Bot und Tool deckungsgleich.
+    _STAFFEL_TIER_COLS = [
+        ("(sonder) PREIS", "(sonder) MinAnzahl"),
+        ("(sonder) PREIS 2", "(sonder) MinAnzahl 2"),
+        ("(sonder) PREIS 3", "(sonder) MinAnzahl 3"),
+    ]
+
+    def _tiers_from_airtable_fields(self, f):
+        """Baut die Staffelpreis-Liste [(preis, min), ...] aus einem Airtable-Record,
+        nach Mindestmenge aufsteigend. Nur Stufen mit gueltigem Preis UND Menge."""
+        tiers = []
+        for pk, qk in self._STAFFEL_TIER_COLS:
+            pv = str(f.get(pk, "") or "").strip()
+            qv = str(f.get(qk, "") or "").strip()
+            if not (pv and qv):
+                continue
+            try:
+                mn = int(float(qv))
+                pr = float(pv.replace(",", "."))
+            except (ValueError, TypeError):
+                continue
+            if mn > 0 and pr > 0:
+                tiers.append((pv, qv, mn))
+        tiers.sort(key=lambda t: t[2])
+        return [(p, q) for (p, q, _m) in tiers]
+
     def _load_sonderpreise_from_airtable(self):
-        """Holt nur die Sonderpreis-Felder aus Airtable: {id: (preis, min_anzahl)}."""
+        """Holt alle Staffelpreis-Stufen aus Airtable: {id: [(preis, min_anzahl), ...]}.
+
+        Bis zu 3 Stufen, nach Mindestmenge aufsteigend sortiert. Nur Stufen mit
+        gueltigem Preis UND Mindestmenge zaehlen. Stufe 1 muss gesetzt sein
+        (Rabatte beginnen immer dort).
+        """
         if not (AIRTABLE_PAT and AIRTABLE_BASE_ID and AIRTABLE_TABLE_ID):
             return {}
         headers = {"Authorization": f"Bearer {AIRTABLE_PAT}"}
         url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_ID}"
+        fields = ["ID"]
+        for pk, qk in self._STAFFEL_TIER_COLS:
+            fields.append(pk)
+            fields.append(qk)
         result = {}
         offset = None
         try:
@@ -208,7 +246,7 @@ class ProductCache:
                 params = {
                     "pageSize": 100,
                     "filterByFormula": "AND({(sonder) PREIS} != '', {(sonder) MinAnzahl} != '')",
-                    "fields[]": ["ID", "(sonder) PREIS", "(sonder) MinAnzahl"],
+                    "fields[]": fields,
                 }
                 if offset:
                     params["offset"] = offset
@@ -218,8 +256,11 @@ class ProductCache:
                 for r in data.get("records", []):
                     f = r.get("fields", {})
                     pid = str(f.get("ID", "")).strip()
-                    if pid:
-                        result[pid] = (str(f.get("(sonder) PREIS", "")), str(f.get("(sonder) MinAnzahl", "")))
+                    if not pid:
+                        continue
+                    tiers = self._tiers_from_airtable_fields(f)
+                    if tiers:
+                        result[pid] = tiers
                 offset = data.get("offset")
                 if not offset:
                     break
@@ -388,6 +429,7 @@ class ProductCache:
             "price": f.get("regular_price", ""),
             "sonderpreis": f.get("(sonder) PREIS", ""),
             "sonderpreis_min": f.get("(sonder) MinAnzahl", ""),
+            "staffel_tiers": self._tiers_from_airtable_fields(f),
             "stock_status": f.get("stock_status", ""),
             "stock": f.get("(all) STOCK", f.get("stock", "")),
             "category": f.get("produkt_kategorie", ""),

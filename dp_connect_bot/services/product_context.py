@@ -11,6 +11,38 @@ from dp_connect_bot.utils.formatting import (
 )
 
 
+def staffel_str(item):
+    """Formatiert ALLE Staffelpreis-Stufen eines Produkts fuer den KI-Kontext,
+    z.B. ' | Staffelpreis: ab 100 Stk 15,90 €, ab 500 Stk 14,90 €'.
+
+    Nutzt die mehrstufige Liste `staffel_tiers` (wie im Tools-System gepflegt)
+    und faellt auf die Einzel-Stufe (sonderpreis/sonderpreis_min) zurueck.
+    """
+    parts = []
+    tiers = item.get("staffel_tiers")
+    if tiers:
+        for tp, tq in tiers:
+            try:
+                tpv = float(str(tp).replace(",", "."))
+                tqv = int(float(tq))
+            except (ValueError, TypeError):
+                continue
+            if tpv > 0 and tqv > 0:
+                parts.append(f"ab {tqv} Stk {format_price_de(tpv)}")
+    else:
+        sp = item.get("sonderpreis")
+        sp_min = item.get("sonderpreis_min")
+        if sp and sp_min:
+            try:
+                spv = float(str(sp).replace(",", "."))
+                spm = int(float(sp_min))
+                if spv > 0 and spm > 0:
+                    parts.append(f"ab {spm} Stk {format_price_de(spv)}")
+            except (ValueError, TypeError):
+                pass
+    return " | Staffelpreis: " + ", ".join(parts) if parts else ""
+
+
 def build_product_context(user_message):
     """Baut den Produktkontext fuer Claude basierend auf der Nutzer-Nachricht."""
     ensure_cache()
@@ -115,7 +147,7 @@ def format_search_results(term):
             bs_tag = " ⭐BESTSELLER" if is_bs else ""
             price = format_price_de(p.get("price"))
             vpe = f" | VPE: {p['vpe']}" if p.get("vpe") else ""
-            parts.append(f"\n  {p['title']} [ID:{p['id']}] | {price}{vpe}{bs_tag}")
+            parts.append(f"\n  {p['title']} [ID:{p['id']}] | {price}{vpe}{staffel_str(p)}{bs_tag}")
 
     elif all_found:
         parts.append(f"\n=== '{term}' NICHT LIEFERBAR ===")
@@ -175,17 +207,7 @@ def format_parent_with_variations(parent, avail_vars=None, is_bestseller=False):
             vprice = format_price_de(v.get("price"))
             vsl = stock_label(v.get("stock"))
             vstock_str = f" | {vsl}" if vsl else ""
-            sonder_str = ""
-            sp = v.get("sonderpreis")
-            sp_min = v.get("sonderpreis_min")
-            if sp and sp_min:
-                try:
-                    sp_val = float(sp)
-                    sp_min_val = int(float(sp_min))
-                    if sp_val > 0 and sp_min_val > 0:
-                        sonder_str = f" | Sonderpreis ab {sp_min_val} Stk: {format_price_de(sp_val)}"
-                except (ValueError, TypeError):
-                    pass
+            sonder_str = staffel_str(v)
             lines.append(f"    - {name} [ID:{v['id']}] | {vprice}{vstock_str}{sonder_str}")
 
         unavail = [v for v in all_vars if not cache.is_available(v["id"])]
