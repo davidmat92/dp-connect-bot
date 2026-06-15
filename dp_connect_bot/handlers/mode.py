@@ -97,13 +97,37 @@ def detect_mode(session, text, channel):
         return None  # Let the message pass through to the detected handler
 
     if session.get("mode") is not None:
+        lower_now = text.strip().lower()
         # Auch im laufenden Bestell-Modus: Eskalations-Signale → Support
         if session.get("mode") == "order":
-            lower_now = text.strip().lower()
             if any(kw in lower_now for kw in ESCALATION_KEYWORDS):
                 log.info("Eskalations-Signal im Bestell-Modus → wechsle zu Support")
                 session["mode"] = "support"
                 session["support_step"] = None
+        # Gegenrichtung: Kunde im Support will (wieder) bestellen → Bestell-Modus.
+        # Ohne diesen Rueckweg sitzt er im Support fest und erreicht nie den
+        # Warenkorb (Support-Bot hat keine Bestell-Tools). Nur bei KLAREM
+        # Kauf-Wunsch UND ohne gleichzeitiges Support-/Beschwerde-Signal —
+        # sonst wuerde eine laufende Reklamation faelschlich abgebrochen.
+        elif session.get("mode") == "support" and order_enabled:
+            has_purchase_intent = (
+                any(w in lower_now.split() for w in
+                    ("bestellen", "bestell", "kaufen", "nachbestellen", "warenkorb"))
+                or "in den warenkorb" in lower_now
+                or "zur kasse" in lower_now
+                or "neue bestellung" in lower_now
+                or "etwas bestellen" in lower_now
+                or "was bestellen" in lower_now
+                or "nochmal das gleiche" in lower_now
+            )
+            # Klare Bestellung getippt ("50 elf bar cherry"): Zahl + Produktsignal
+            qty_order = (any(c.isdigit() for c in lower_now)
+                         and any(kw in lower_now for kw in PRODUCT_KEYWORDS))
+            still_support = (any(kw in lower_now for kw in ESCALATION_KEYWORDS)
+                             or any(kw in lower_now for kw in SUPPORT_KEYWORDS))
+            if (has_purchase_intent or qty_order) and not still_support:
+                log.info("Kauf-Wunsch im Support-Modus → wechsle zu Bestell-Modus")
+                session["mode"] = "order"
         return None
 
     if text.strip().startswith("/"):
