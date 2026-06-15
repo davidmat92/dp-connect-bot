@@ -35,22 +35,38 @@ def get_customer_order_info(customer_id) -> dict:
 
 
 def create_order(customer_id, cart, payment_method: str, channel: str) -> dict:
-    """Legt die Bestellung an. cart = Session-Cart (product_id, quantity)."""
-    from dp_connect_bot.services.product_cache import cache
+    """Legt die Bestellung an. cart = Session-Cart (product_id, quantity).
+
+    WICHTIG: Pro Position wird der STUECKPREIS mitgesendet (Staffelpreis fuer die
+    Menge, sonst der im Warenkorb gezeigte Preis). Sonst wuerde WooCommerce bei
+    einer REST-Bestellung den Normalpreis ansetzen und den Staffelrabatt ignorieren
+    — der Kunde wuerde teurer berechnet als im Chat zugesagt.
+    """
+    from dp_connect_bot.services.product_cache import cache, staffel_price_for
 
     items = []
     for i in cart:
         pid = str(i.get("product_id", ""))
         qty = int(i.get("quantity", 1))
         product = cache.get_product_by_id(pid)
+        # Stueckpreis bestimmen: Staffelpreis (autoritativ) ODER der gezeigte Preis
+        unit = staffel_price_for(product, qty) if product else None
+        if unit is None:
+            try:
+                unit = float(str(i.get("price", "")).replace(",", "."))
+            except (ValueError, TypeError):
+                unit = None
         if product and product.get("post_parent"):
-            items.append({
+            entry = {
                 "product_id": int(product["post_parent"]),
                 "variation_id": int(pid),
                 "quantity": qty,
-            })
+            }
         else:
-            items.append({"product_id": int(pid), "quantity": qty})
+            entry = {"product_id": int(pid), "quantity": qty}
+        if unit and unit > 0:
+            entry["price"] = round(unit, 2)
+        items.append(entry)
 
     try:
         return _post("/api/bot-order/create", {

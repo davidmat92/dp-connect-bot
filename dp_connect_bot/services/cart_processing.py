@@ -7,11 +7,26 @@ import re
 
 from dp_connect_bot.config import WOOCOMMERCE_URL, log
 from dp_connect_bot.models.response import Button, Keyboard, KeyboardType, WcAction
-from dp_connect_bot.services.product_cache import cache
+from dp_connect_bot.services.product_cache import cache, staffel_price_for
 from dp_connect_bot.services.history import track_event
 from dp_connect_bot.utils.formatting import (
     format_price_de, get_variant_display_name, parse_price, stock_label,
 )
+
+
+def _apply_staffel_price(item, product):
+    """Setzt item['price'] auf den korrekten Preis fuer die AKTUELLE Menge —
+    nur bei Staffelprodukten. Erreicht die Menge eine Stufe → Staffelpreis,
+    sonst Normalpreis. So bleibt der angezeigte Preis IMMER konsistent zur Menge
+    (auch nach Merge oder set_qty ueber/unter eine Schwelle) und entspricht dem,
+    was spaeter berechnet wird."""
+    if not product or not product.get("staffel_tiers"):
+        return
+    sp = staffel_price_for(product, item.get("quantity", 0))
+    if sp is not None:
+        item["price"] = str(sp)
+    elif product.get("price") not in (None, ""):
+        item["price"] = str(product.get("price"))
 
 
 def process_cart_actions(session, ai_response):
@@ -92,6 +107,7 @@ def process_cart_actions(session, ai_response):
                 existing = next((i for i in session["cart"] if str(i["product_id"]) == pid), None)
                 if existing:
                     existing["quantity"] += qty
+                    _apply_staffel_price(existing, product_check)  # Merge kann Staffel-Schwelle kreuzen
                 else:
                     img_url = ""
                     if product_check:
@@ -106,13 +122,15 @@ def process_cart_actions(session, ai_response):
                     price = data.get("price", "")
                     if (not price or str(price).strip() in ("", "0", "0.0")) and product_check:
                         price = product_check.get("price", "") or price
-                    session["cart"].append({
+                    new_item = {
                         "product_id": pid,
                         "title": data.get("title", ""),
                         "quantity": qty,
                         "price": str(price),
                         "image_url": img_url,
-                    })
+                    }
+                    _apply_staffel_price(new_item, product_check)  # Staffelpreis fuer die Menge
+                    session["cart"].append(new_item)
                 added_count += 1
                 wc_actions.append(WcAction(action="add", product_id=pid, quantity=qty))
 
@@ -144,6 +162,7 @@ def process_cart_actions(session, ai_response):
                             qty = ((qty // vpe) + 1) * vpe
                             clean += f"\n\n📦 Wird in {vpe}er-Packs geliefert – ich mach {qty} statt {old_qty} draus!"
                     item["quantity"] = qty
+                    _apply_staffel_price(item, product_check)  # Preis an neue Menge anpassen
                     clean += f"\n\n✏️ Menge angepasst: {item['title']} → {qty} Stück"
                     # Webchat-Sync kennt kein set_qty: remove + add ergibt dieselbe Menge
                     wc_actions.append(WcAction(action="remove", product_id=pid))

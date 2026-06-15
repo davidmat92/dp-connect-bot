@@ -469,8 +469,18 @@ def unified_handle_callback(chat_id, callback_data, channel="telegram"):
             return BotResponse(text="Kauf auf Rechnung ist für dein Konto noch nicht freigeschaltet — nimm Vorkasse oder frag bei Davides Team an. 🙏",
                                answer_callback_text="Nicht freigeschaltet")
 
+        # Doppelklick-/Doppelbestellungs-Schutz: ein zweiter Klick waehrend die
+        # Anlage laeuft wird abgefangen (sonst zwei echte WC-Bestellungen).
+        if session.get("chat_order_inflight"):
+            session_manager.save(chat_id, session)
+            return BotResponse(text="Moment, deine Bestellung wird gerade angelegt — bitte nicht doppelt klicken! ⏳",
+                               answer_callback_text="Wird schon bearbeitet")
+        session["chat_order_inflight"] = True
+        session_manager.save(chat_id, session)
+
         from dp_connect_bot.services.chat_order import create_order
         res = create_order(verified["customer_id"], session["cart"], method, channel)
+        session["chat_order_inflight"] = False
         if res.get("ok"):
             session["last_order"] = [dict(i) for i in session["cart"]]
             session["cart"] = []

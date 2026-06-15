@@ -21,6 +21,29 @@ from dp_connect_bot.utils.formatting import kebab_to_readable
 _on_cache_loaded = None
 
 
+def staffel_price_for(product, qty):
+    """Korrekter Stueck-Staffelpreis fuer eine Menge: die HOECHSTE erreichte Stufe
+    (= guenstigster passender Preis) aus product['staffel_tiers']. None, wenn keine
+    Stufe erreicht wird (dann gilt der normale Preis). tiers sind aufsteigend nach
+    Mindestmenge sortiert, daher gewinnt der letzte Treffer."""
+    if not product:
+        return None
+    try:
+        qty = int(qty)
+    except (ValueError, TypeError):
+        return None
+    chosen = None
+    for tp, tq in (product.get("staffel_tiers") or []):
+        try:
+            mn = int(float(tq))
+            pr = float(str(tp).replace(",", "."))
+        except (ValueError, TypeError):
+            continue
+        if mn > 0 and pr > 0 and qty >= mn:
+            chosen = pr
+    return chosen
+
+
 def set_on_cache_loaded(callback):
     """Register a callback that is called after cache.load() finishes."""
     global _on_cache_loaded
