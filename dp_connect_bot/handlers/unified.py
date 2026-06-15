@@ -283,7 +283,12 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
     _checkout_intent = lower_text in CHECKOUT_WORDS or any(
         w in lower_text.split() for w in ("kasse", "checkout", "bestellen", "abschließen", "abschliessen")
     )
-    if _checkout_intent and session.get("cart"):
+    # Bei aktiver Chat-Direktbestellung den Shortcut NICHT nehmen — sonst
+    # umgeht der Standard-Link die Zahlart-Buttons. AI-Flow baut den Checkout.
+    from dp_connect_bot.services.bot_config import load_bot_config
+    _chat_checkout = (load_bot_config().get("chat_checkout_enabled")
+                      and (session.get("verified") or {}).get("customer_id"))
+    if _checkout_intent and session.get("cart") and not _chat_checkout:
         resp = handle_checkout(session, channel)
         if resp:
             track_event("checkout", chat_id, channel)
