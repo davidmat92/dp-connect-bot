@@ -64,6 +64,14 @@ def _api_call(system, messages, tools=None, max_tokens=2000):
         payload["tools"] = tools
 
     resp = requests.post(_API_URL, headers=headers, json=payload, timeout=30)
+    # Harter API-Ausfall (z.B. Guthaben leer) → einmalig Davide alarmieren,
+    # damit der Bot nicht still fuer alle Kunden ausfaellt.
+    if resp.status_code in (400, 401, 402, 429) and "credit balance" in resp.text.lower():
+        try:
+            from dp_connect_bot.services.pushover import notify_api_outage
+            notify_api_outage("Anthropic-Guthaben aufgebraucht (HTTP 400 'credit balance too low').")
+        except Exception as _e:
+            log.error(f"outage-alert fehlgeschlagen: {_e}")
     resp.raise_for_status()
     return resp.json()
 

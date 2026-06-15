@@ -637,7 +637,7 @@ def _handle_flavor_selection(session, chat_id, callback_data):
 def _handle_quantity_selection(session, chat_id, callback_data):
     """Handle quantity button click."""
     parts = callback_data.split("_")
-    if len(parts) != 3:
+    if len(parts) != 3 or not parts[2].isdigit():
         return BotResponse(is_silent=True)
 
     product_id = parts[1]
@@ -772,7 +772,14 @@ def _handle_done_flavors(session, chat_id):
 
 def _handle_reorder_confirm(session, chat_id):
     """Handle reorder confirmation."""
-    last_order = session.get("last_order", [])
+    # Bevorzugt die bereits aufgefrischte Liste aus handle_reorder; sonst
+    # last_order frisch validieren (tote Produkte raus, Live-Preise).
+    from dp_connect_bot.handlers.cart import refresh_reorder_items
+    pending = session.pop("reorder_pending", None)
+    if pending:
+        last_order = pending
+    else:
+        last_order, _dropped = refresh_reorder_items(session.get("last_order", []))
     if last_order:
         session["cart"] = [dict(i) for i in last_order]
         n = len(session["cart"])

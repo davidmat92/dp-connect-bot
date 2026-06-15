@@ -2,12 +2,19 @@
 Pushover push notifications – alerts Davide when human attention is needed.
 """
 
+import os
+import time
 import requests
 import threading
 
-from dp_connect_bot.config import PUSHOVER_USER_KEY, PUSHOVER_API_TOKEN, log
+from dp_connect_bot.config import PUSHOVER_USER_KEY, PUSHOVER_API_TOKEN, log, _BASE_DIR
 
 PUSHOVER_URL = "https://api.pushover.net/1/messages.json"
+
+# Drosselung fuer den AI-Ausfall-Alarm: hoechstens 1 Push pro 30 Min, sonst
+# wuerde jeder fehlgeschlagene API-Call (= jede Kundennachricht) eine Push ausloesen.
+_OUTAGE_THROTTLE_FILE = os.path.join(_BASE_DIR, ".api_outage_alert.ts")
+_OUTAGE_THROTTLE_S = 1800
 
 
 def send_pushover(title, message, priority=0, url=None, url_title=None):
@@ -72,4 +79,30 @@ def notify_escalation(chat_id, channel, reason, collected_info, customer_name=No
         title=title,
         message=message,
         priority=1,  # High priority – plays sound even in quiet hours
+    )
+
+
+def notify_api_outage(detail):
+    """Alarm an Davide, wenn die Anthropic-API hart ausfaellt (z.B. Guthaben leer).
+
+    Gedrosselt auf max. 1 Push / 30 Min, damit nicht jede fehlgeschlagene
+    Kundennachricht eine eigene Benachrichtigung erzeugt.
+    """
+    try:
+        if os.path.exists(_OUTAGE_THROTTLE_FILE):
+            if (time.time() - os.path.getmtime(_OUTAGE_THROTTLE_FILE)) < _OUTAGE_THROTTLE_S:
+                return  # erst kuerzlich alarmiert
+        with open(_OUTAGE_THROTTLE_FILE, "w") as fh:
+            fh.write(str(time.time()))
+    except Exception as e:
+        log.error(f"[pushover] outage-throttle: {e}")
+        # Im Zweifel lieber senden als verschlucken → kein return
+
+    send_pushover(
+        title="🔴 DP Bot: AI-Ausfall",
+        message=(detail + "\n\nDer Bot kann gerade keine Kundenanfragen beantworten. "
+                 "Bitte Guthaben pruefen/aufladen."),
+        priority=1,
+        url="https://console.anthropic.com/settings/billing",
+        url_title="Anthropic Guthaben aufladen",
     )

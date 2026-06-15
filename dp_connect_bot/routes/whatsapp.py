@@ -51,7 +51,9 @@ def whatsapp_webhook():
                     # Blaue Haken + "tippt..." sofort anzeigen
                     adapter.mark_read_typing(msg.get("id"))
 
-                    name = contacts[0]["profile"]["name"] if contacts else ""
+                    name = ""
+                    if contacts:
+                        name = (contacts[0].get("profile") or {}).get("name", "")
                     user_info = {"first_name": name}
 
                     # --- Interactive button/list reply (check BEFORE text guard) ---
@@ -64,7 +66,9 @@ def whatsapp_webhook():
                             continue
 
                     elif msg.get("type") == "text":
-                        text = msg["text"]["body"]
+                        text = (msg.get("text") or {}).get("body", "")
+                        if not text:
+                            continue
 
                     # --- Voice message ---
                     elif msg.get("type") == "audio":

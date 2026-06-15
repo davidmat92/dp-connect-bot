@@ -62,27 +62,69 @@ def handle_cart_view(session):
         return BotResponse(text="🛒 Dein Warenkorb ist noch leer. Sag mir was du brauchst! 😊")
 
 
+def refresh_reorder_items(last_order):
+    """Validiert eine alte Bestellung gegen den aktuellen Live-Katalog.
+
+    Entfernt Produkte, die es nicht mehr gibt oder die aktuell nicht
+    lieferbar sind, und frischt den Preis auf (B2B-Sonderpreise aus Airtable
+    aendern sich). So landet eine Nachbestellung NIE mit veralteten Preisen
+    oder toten Produkt-IDs im Warenkorb.
+
+    Returns: (valid_items, dropped_titles)
+    """
+    valid, dropped = [], []
+    for i in last_order:
+        pid = str(i.get("product_id", ""))
+        prod = cache.get_product_by_id(pid)
+        if not prod or (cache.available and not cache.is_available(pid)):
+            dropped.append(i.get("title", pid))
+            continue
+        item = dict(i)
+        if prod.get("price"):
+            item["price"] = str(prod.get("price"))  # Live-Preis statt gespeichertem
+        valid.append(item)
+    return valid, dropped
+
+
+def _dropped_note(dropped):
+    """Hinweis-Text fuer nicht mehr verfuegbare Nachbestell-Positionen."""
+    if not dropped:
+        return ""
+    if len(dropped) == 1:
+        return f"\n\n⚠️ *{dropped[0]}* ist aktuell nicht lieferbar und wurde weggelassen."
+    liste = ", ".join(dropped)
+    return f"\n\n⚠️ Diese Artikel sind aktuell nicht lieferbar und wurden weggelassen: {liste}"
+
+
 def handle_reorder(session, channel):
     """Handle reorder request."""
     last_order = session.get("last_order", [])
     if not last_order:
         return None  # Let Claude handle it
 
-    if channel in ("telegram", "whatsapp"):
-        cart_summary = "\n".join(f"  • {i['quantity']}x {i['title']}" for i in last_order)
+    valid, dropped = refresh_reorder_items(last_order)
+    if not valid:
         return BotResponse(
-            text=f"🔄 Deine letzte Bestellung:\n\n{cart_summary}\n\nSoll ich die nochmal einpacken?",
+            text=("Deine letzte Bestellung enthält leider nur Artikel, die aktuell nicht "
+                  "lieferbar sind. 😕 Sag mir einfach, was du brauchst — ich find dir was!")
+        )
+
+    if channel in ("telegram", "whatsapp"):
+        # Aufgefrischte Liste fuer den Bestaetigungs-Button merken
+        session["reorder_pending"] = valid
+        cart_summary = "\n".join(f"  • {i['quantity']}x {i['title']}" for i in valid)
+        return BotResponse(
+            text=f"🔄 Deine letzte Bestellung:\n\n{cart_summary}{_dropped_note(dropped)}\n\nSoll ich die nochmal einpacken?",
             keyboards=[Keyboard(type=KeyboardType.REORDER_CONFIRM)],
         )
     else:
-        # Webchat: direkt laden
-        session["cart"] = [dict(i) for i in last_order]
-        n = len(session["cart"])
+        # Webchat: direkt laden (mit aufgefrischten Preisen)
+        session["cart"] = [dict(i) for i in valid]
         total = sum(parse_price(i.get("price", "0")) * i.get("quantity", 0) for i in session["cart"])
         cart_summary = "\n".join(f"  ✅ {i['quantity']}x {i['title']}" for i in session["cart"])
         return BotResponse(
             text=(
-                f"🔄 Letzte Bestellung geladen!\n\n{cart_summary}\n\n"
+                f"🔄 Letzte Bestellung geladen!\n\n{cart_summary}{_dropped_note(dropped)}\n\n"
                 f"💰 Gesamt: {format_price_de(total)} netto\n\n"
                 f"Schreib *fertig* zum Bestellen oder sag mir was du ändern willst! ✏️"
             )
