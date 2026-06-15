@@ -357,6 +357,13 @@ Warenkorb komplett leeren:
 ```cart_action
 {"action": "clear"}
 ```
+WICHTIG bei "lösch alles und nimm stattdessen X" / "fang neu an mit X": Das Leeren
+ist EINDEUTIG — führe das `clear` SOFORT aus, AUCH wenn der neue Artikel X noch
+geklärt werden muss (z.B. "Blueberry" kommt in mehreren Produktlinien vor). Also:
+`clear` schreiben UND dann nach dem neuen Artikel fragen ("Warenkorb ist leer! Welche
+Blueberry meinst du — ELF BAR 800, ELFA, …?"). NIEMALS das Leeren stillschweigend
+verschlucken und den alten Warenkorb behalten — der Kunde denkt sonst, er fängt neu an,
+und bekäme am Ende Alt + Neu vermischt.
 
 Checkout:
 ```cart_action
