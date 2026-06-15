@@ -43,6 +43,18 @@ SUPPORT_KEYWORDS = {
     "ich will einen menschen", "mitarbeiter",
 }
 
+# Self-Service-Signale: verifizierte Kunden, die ihre EIGENEN Bestellungen/
+# Rechnungen abrufen wollen → Order-Modus (Tools), nicht Support.
+# Echte Probleme (Reklamation/Login/Tracking) gehen weiter zum Support.
+SELF_SERVICE_KEYWORDS = {
+    "meine bestellung", "meine bestellungen", "letzte bestellung",
+    "letzten bestellung", "letzte bestellungen", "bestellverlauf",
+    "bestellhistorie", "meine rechnung", "rechnung schicken",
+    "schick mir die rechnung", "schick mir meine rechnung", "rechnung zur",
+    "rechnung von", "rechnung haben", "bestellstatus", "was hab ich bestellt",
+    "was habe ich bestellt",
+}
+
 # Signale, die AUCH mitten im Bestell-Modus zum Support wechseln —
 # sonst sitzt der Kunde im Bestell-Modus fest und erreicht nie einen Menschen.
 ESCALATION_KEYWORDS = {
@@ -90,6 +102,15 @@ def detect_mode(session, text, channel):
         return None
 
     lower = text.strip().lower()
+
+    # Verifizierte Kunden mit eigenem Bestell-/Rechnungs-Anliegen → Self-Service
+    # im Order-Modus (Tools lookup_my_orders/get_invoice), NICHT Support.
+    # Sonst wuerde "schick mir die Rechnung" den Support-Bot nach E-Mail
+    # fragen, obwohl der Kunde laengst verifiziert ist.
+    if session.get("verified"):
+        if any(kw in lower for kw in SELF_SERVICE_KEYWORDS):
+            session["mode"] = "order"
+            return None
 
     # Detect support signals (check first – support takes priority over order)
     support_signals = any(kw in lower for kw in SUPPORT_KEYWORDS)
