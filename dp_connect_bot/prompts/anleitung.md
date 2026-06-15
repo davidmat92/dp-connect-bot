@@ -20,7 +20,8 @@ Ich bin rund um die Uhr für dich da — so holst du das Meiste raus:
 🔁 *Nachbestellen* — "Nochmal das gleiche wie letztes Mal" und fertig
 
 📋 *Deine Bestellungen & Rechnungen*
-• "Zeig mir meine letzten Bestellungen"
+• "Zeig mir meine letzten Bestellungen" (auch ältere — sag "zeig mir mehr")
+• "Was war in Bestellung 8511?" — auch alte Bestellungen im Detail
 • "Schick mir die Rechnung zur letzten Bestellung"
 
 💳 *Kasse* — sag einfach "Kasse" oder "bestellen":
