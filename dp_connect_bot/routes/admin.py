@@ -22,6 +22,40 @@ def _require_admin():
     return key == ADMIN_API_KEY
 
 
+@admin_bp.route("/admin/api-diag", methods=["GET"])
+def admin_api_diag():
+    """TEMPORAER: testet den Anthropic-Call und gibt Status+Body zurueck (kein Key)."""
+    if not _require_admin():
+        return jsonify({"error": "unauthorized"}), 401
+    import requests as _rq
+    from dp_connect_bot.config import ANTHROPIC_API_KEY, CLAUDE_MODEL
+    from dp_connect_bot.services.claude_ai import _API_URL, _API_HEADERS
+    if not ANTHROPIC_API_KEY:
+        return jsonify({"error": "no api key set"}), 200
+    payload = {
+        "model": CLAUDE_MODEL,
+        "max_tokens": 64,
+        "messages": [{"role": "user", "content": "sag nur: ok"}],
+        "output_config": {"effort": "medium"},
+    }
+    out = {"model": CLAUDE_MODEL, "key_prefix": ANTHROPIC_API_KEY[:8] + "...", "key_len": len(ANTHROPIC_API_KEY)}
+    try:
+        r = _rq.post(_API_URL, headers={**_API_HEADERS, "x-api-key": ANTHROPIC_API_KEY}, json=payload, timeout=30)
+        out["status"] = r.status_code
+        out["body"] = r.text[:800]
+    except Exception as e:
+        out["exception"] = str(e)[:500]
+    # Zweiter Versuch OHNE output_config (falls das Feld das Problem ist)
+    try:
+        r2 = _rq.post(_API_URL, headers={**_API_HEADERS, "x-api-key": ANTHROPIC_API_KEY},
+                      json={k: v for k, v in payload.items() if k != "output_config"}, timeout=30)
+        out["status_no_effort"] = r2.status_code
+        out["body_no_effort"] = r2.text[:400]
+    except Exception as e:
+        out["exception_no_effort"] = str(e)[:300]
+    return jsonify(out), 200
+
+
 @admin_bp.route("/admin/sessions", methods=["GET"])
 def admin_sessions():
     if not _require_admin():
