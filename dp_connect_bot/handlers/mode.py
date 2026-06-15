@@ -130,6 +130,11 @@ def detect_mode(session, text, channel):
     # Detect product/order signals
     order_signals = any(kw in lower for kw in PRODUCT_KEYWORDS)
 
+    # Checkout-/Warenkorb-Intent ist ebenfalls Bestell-Kontext (nicht Menue)
+    if not order_signals and any(w in lower.split() for w in
+                                 ("kasse", "checkout", "bestellen", "warenkorb")):
+        order_signals = True
+
     # Numbers + words = likely an order (e.g. "50 cherry")
     if not order_signals and any(c.isdigit() for c in lower) and len(lower.split()) >= 2:
         order_signals = True
