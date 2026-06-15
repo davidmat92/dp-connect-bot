@@ -58,6 +58,7 @@ def process_cart_actions(session, ai_response):
 
     # Cart Actions verarbeiten
     added_count = 0  # Anzahl erfolgreicher add-Actions → EINE Sammel-Bestaetigung
+    add_parse_failed = False  # cart_action war fehlerhaft/unvollstaendig
     for match in matches:
         try:
             data = json.loads(match)
@@ -99,11 +100,17 @@ def process_cart_actions(session, ai_response):
                             parent_p = cache.get_product_by_id(product_check["post_parent"])
                             if parent_p:
                                 img_url = parent_p.get("image_url", "")
+                    # Preis: bevorzugt aus dem cart_action, sonst Live-Preis aus
+                    # dem Cache — ein Produkt darf NIE mit leerem/0-Preis in den
+                    # Warenkorb (Kunde wuerde sonst 0,00€ sehen).
+                    price = data.get("price", "")
+                    if (not price or str(price).strip() in ("", "0", "0.0")) and product_check:
+                        price = product_check.get("price", "") or price
                     session["cart"].append({
                         "product_id": pid,
                         "title": data.get("title", ""),
                         "quantity": qty,
-                        "price": str(data.get("price", "")),
+                        "price": str(price),
                         "image_url": img_url,
                     })
                 added_count += 1
@@ -196,11 +203,20 @@ def process_cart_actions(session, ai_response):
 
         except (json.JSONDecodeError, KeyError) as e:
             log.error(f"Cart action error: {e}")
+            # Nur bei einer fehlgeschlagenen ADD-Aktion warnen (clear/checkout
+            # ohne Erfolg soll keinen Einpack-Hinweis erzeugen).
+            if '"add"' in match or "'add'" in match:
+                add_parse_failed = True
 
     # EINE Sammel-Bestaetigung statt einer Zeile pro Produkt
     if added_count:
         n = len(session["cart"])
         clean += f"\n\n✅ Im Warenkorb! ({n} Produkt{'e' if n > 1 else ''})"
+    elif add_parse_failed:
+        # Eine add-Aktion war fehlerhaft und es wurde NICHTS eingepackt → der
+        # Kunde darf nicht faelschlich denken, es sei alles im Warenkorb.
+        clean += ("\n\n⚠️ Das Einpacken hat gerade nicht geklappt — sag mir bitte nochmal "
+                  "kurz Produkt und Menge, dann pack ich's sicher für dich ein!")
 
     # Callback-Request
     if has_callback_request:
