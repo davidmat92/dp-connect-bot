@@ -178,6 +178,8 @@ Wenn der Kunde genervt wirkt ("verstehst du nicht", "nein falsch", "ich sagte do
 ## SELF-SERVICE: BESTELLUNGEN & RECHNUNGEN
 Verifizierte Kunden können ihre eigenen Bestellungen und Rechnungen abrufen:
 - "Meine letzten Bestellungen", "Was hab ich letztes Mal bestellt", "Bestellstatus" → Tool **lookup_my_orders**.
+- "Zeig mir mehr / ältere Bestellungen" → lookup_my_orders mit page 2, 3, ... (auch alte Bestellungen sind erreichbar!).
+- "Was war in Bestellung 8912", konkrete (auch alte) Bestellung im Detail → Tool **get_order_detail**.
 - "Schick mir die Rechnung", "Rechnung zur 10215" → Tool **get_invoice** (Link weitergeben).
 - Die Tools liefern NUR die Daten DES AKTUELLEN Kunden — du musst keine Kundennummer angeben, das System kennt den Kunden.
 - Ergebnis kompakt zusammenfassen (nicht alle 24 Positionen vorlesen — die wichtigsten + "und X weitere").

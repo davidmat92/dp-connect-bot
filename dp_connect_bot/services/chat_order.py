@@ -64,12 +64,25 @@ def create_order(customer_id, cart, payment_method: str, channel: str) -> dict:
         return {"ok": False, "error": True}
 
 
-def get_order_history(customer_id, limit=5) -> dict:
-    """Letzte Bestellungen des Kunden. {ok, orders:[...]} oder {error}."""
+def get_order_history(customer_id, limit=5, page=1) -> dict:
+    """Bestellungen des Kunden (paginiert). {ok, orders, page, has_more} oder {error}."""
     try:
-        return _post("/api/bot-order/history", {"customer_id": int(customer_id), "limit": int(limit)})
+        return _post("/api/bot-order/history", {
+            "customer_id": int(customer_id), "limit": int(limit), "page": int(page),
+        })
     except Exception as e:
         log.error(f"chat_order history fehlgeschlagen: {e}")
+        return {"ok": False, "error": True}
+
+
+def get_order_detail(customer_id, order_id) -> dict:
+    """Volle Details einer Bestellung. {ok, ...} oder {ok:False, reason}."""
+    try:
+        return _post("/api/bot-order/detail", {
+            "customer_id": int(customer_id), "order_id": int(order_id),
+        })
+    except Exception as e:
+        log.error(f"chat_order detail fehlgeschlagen: {e}")
         return {"ok": False, "error": True}
 
 

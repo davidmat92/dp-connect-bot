@@ -123,15 +123,33 @@ ORDER_TOOLS = [
     {
         "name": "lookup_my_orders",
         "description": (
-            "Zeigt die letzten Bestellungen DES AKTUELLEN KUNDEN (Nummer, Datum, Status, "
-            "Betrag, Positionen). Nutze es bei 'meine letzten Bestellungen', 'was hab ich "
-            "letztes Mal bestellt', 'Bestellstatus'. Funktioniert nur fuer verifizierte Kunden."
+            "Zeigt Bestellungen DES AKTUELLEN KUNDEN (Nummer, Datum, Status, Betrag, "
+            "Positionen). Nutze es bei 'meine letzten Bestellungen', 'was hab ich letztes "
+            "Mal bestellt', 'Bestellstatus'. Fuer AELTERE Bestellungen ('zeig mir mehr', "
+            "'noch aeltere') erhoehe page (2, 3, ...). Nur fuer verifizierte Kunden."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "limit": {"type": "integer", "description": "Anzahl Bestellungen (1-10, Default 5)."}
+                "limit": {"type": "integer", "description": "Anzahl pro Seite (1-20, Default 5)."},
+                "page": {"type": "integer", "description": "Seite fuer aeltere Bestellungen (Default 1)."}
             },
+        },
+    },
+    {
+        "name": "get_order_detail",
+        "description": (
+            "Zeigt ALLE Positionen + Status einer BESTIMMTEN Bestellung DES AKTUELLEN "
+            "KUNDEN per Bestellnummer. Nutze es bei 'was war in Bestellung 8912', 'zeig mir "
+            "die Bestellung vom April', wenn der Kunde eine konkrete (auch alte) Bestellung "
+            "im Detail sehen will. Nur fuer verifizierte Kunden."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "order_id": {"type": "string", "description": "Bestellnummer."}
+            },
+            "required": ["order_id"],
         },
     },
     {
@@ -162,7 +180,7 @@ def _execute_order_tool(tool_name, tool_input, session=None):
         format_search_results, format_parent_with_variations, get_category_overview,
     )
     try:
-        if tool_name in ("lookup_my_orders", "get_invoice"):
+        if tool_name in ("lookup_my_orders", "get_invoice", "get_order_detail"):
             verified = (session or {}).get("verified") or {}
             customer_id = verified.get("customer_id")
             if not customer_id:
@@ -170,12 +188,14 @@ def _execute_order_tool(tool_name, tool_input, session=None):
             from dp_connect_bot.services import chat_order
             if tool_name == "lookup_my_orders":
                 limit = tool_input.get("limit", 5)
-                res = chat_order.get_order_history(customer_id, limit)
+                page = tool_input.get("page", 1)
+                res = chat_order.get_order_history(customer_id, limit, page)
                 if not res.get("ok"):
                     return "Konnte die Bestellungen gerade nicht laden."
                 orders = res.get("orders", [])
                 if not orders:
-                    return "Der Kunde hat noch keine Bestellungen."
+                    return ("Keine weiteren (aelteren) Bestellungen vorhanden." if page > 1
+                            else "Der Kunde hat noch keine Bestellungen.")
                 lines = []
                 for o in orders:
                     items = o.get("items", [])
@@ -184,7 +204,27 @@ def _execute_order_tool(tool_name, tool_input, session=None):
                         f"Bestellung #{o['number']} vom {o['date']} — {o['status']} — "
                         f"{str(o['total']).replace('.', ',')}€\n  Positionen: {item_str}"
                     )
-                return "LETZTE BESTELLUNGEN:\n" + "\n".join(lines)
+                header = f"BESTELLUNGEN (Seite {page}):" if page > 1 else "LETZTE BESTELLUNGEN:"
+                footer = "\n(Es gibt noch aeltere — page erhoehen fuer mehr.)" if res.get("has_more") else ""
+                return header + "\n" + "\n".join(lines) + footer
+
+            if tool_name == "get_order_detail":
+                oid = str(tool_input.get("order_id", "")).strip()
+                if not oid:
+                    return "Bitte Bestellnummer angeben."
+                res = chat_order.get_order_detail(customer_id, oid)
+                if res.get("ok"):
+                    items = "\n".join(
+                        f"  - {i['quantity']}× {i['name']}" + (f" ({str(i['total']).replace('.', ',')}€)" if i.get('total') else "")
+                        for i in res.get("items", [])
+                    )
+                    return (f"BESTELLUNG #{res['number']} vom {res['date']} — {res['status']} — "
+                            f"{str(res['total']).replace('.', ',')}€ ({res.get('payment','')})\n{items}")
+                reasons = {
+                    "not_owner": "Diese Bestellung gehoert NICHT zu diesem Kunden — NICHT herausgeben!",
+                    "order_not_found": "Diese Bestellnummer gibt es nicht.",
+                }
+                return reasons.get(res.get("reason"), "Konnte die Bestellung nicht laden.")
 
             # get_invoice
             order_id = str(tool_input.get("order_id", "")).strip() or None
