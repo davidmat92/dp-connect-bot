@@ -120,16 +120,88 @@ ORDER_TOOLS = [
         "description": "Uebersicht aller Produktkategorien mit Produktanzahl. Fuer 'was habt ihr so?'-Fragen.",
         "input_schema": {"type": "object", "properties": {}},
     },
+    {
+        "name": "lookup_my_orders",
+        "description": (
+            "Zeigt die letzten Bestellungen DES AKTUELLEN KUNDEN (Nummer, Datum, Status, "
+            "Betrag, Positionen). Nutze es bei 'meine letzten Bestellungen', 'was hab ich "
+            "letztes Mal bestellt', 'Bestellstatus'. Funktioniert nur fuer verifizierte Kunden."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "description": "Anzahl Bestellungen (1-10, Default 5)."}
+            },
+        },
+    },
+    {
+        "name": "get_invoice",
+        "description": (
+            "Holt einen Link zur Rechnung einer Bestellung DES AKTUELLEN KUNDEN. Nutze es bei "
+            "'schick mir die Rechnung', 'Rechnung zur Bestellung 10215'. Ohne order_id wird die "
+            "letzte Bestellung genommen. Funktioniert nur fuer verifizierte Kunden."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "order_id": {"type": "string", "description": "Bestellnummer (optional, aus dem Verlauf)."}
+            },
+        },
+    },
 ]
 
 
-def _execute_order_tool(tool_name, tool_input):
-    """Fuehrt ein Bestell-Tool aus. Gibt immer einen String zurueck."""
+def _execute_order_tool(tool_name, tool_input, session=None):
+    """Fuehrt ein Bestell-Tool aus. Gibt immer einen String zurueck.
+
+    Self-Service-Tools (lookup_my_orders/get_invoice) ziehen die customer_id
+    IMMER aus der verifizierten Session — niemals aus tool_input (Sicherheit).
+    """
     from dp_connect_bot.services.product_cache import cache, ensure_cache
     from dp_connect_bot.services.product_context import (
         format_search_results, format_parent_with_variations, get_category_overview,
     )
     try:
+        if tool_name in ("lookup_my_orders", "get_invoice"):
+            verified = (session or {}).get("verified") or {}
+            customer_id = verified.get("customer_id")
+            if not customer_id:
+                return "FEHLER: Kunde nicht verifiziert — bitte erst verifizieren (E-Mail/Nummer)."
+            from dp_connect_bot.services import chat_order
+            if tool_name == "lookup_my_orders":
+                limit = tool_input.get("limit", 5)
+                res = chat_order.get_order_history(customer_id, limit)
+                if not res.get("ok"):
+                    return "Konnte die Bestellungen gerade nicht laden."
+                orders = res.get("orders", [])
+                if not orders:
+                    return "Der Kunde hat noch keine Bestellungen."
+                lines = []
+                for o in orders:
+                    items = o.get("items", [])
+                    item_str = ", ".join(items[:6]) + (f" und {len(items)-6} weitere" if len(items) > 6 else "")
+                    lines.append(
+                        f"Bestellung #{o['number']} vom {o['date']} — {o['status']} — "
+                        f"{str(o['total']).replace('.', ',')}€\n  Positionen: {item_str}"
+                    )
+                return "LETZTE BESTELLUNGEN:\n" + "\n".join(lines)
+
+            # get_invoice
+            order_id = str(tool_input.get("order_id", "")).strip() or None
+            res = chat_order.get_invoice_link(customer_id, order_id)
+            if res.get("ok") and res.get("url"):
+                return (f"RECHNUNG zu Bestellung #{res.get('number')} "
+                        f"(Rechnungsnr. {res.get('invoice_number', '')}): {res['url']}\n"
+                        "Gib dem Kunden diesen Link — er ist sicher und zeitlich begrenzt gueltig.")
+            reasons = {
+                "no_orders": "Der Kunde hat noch keine Bestellungen.",
+                "no_invoice": f"Zu Bestellung #{res.get('number','?')} gibt es noch keine Rechnung (kommt nach Abschluss).",
+                "not_owner": "Diese Bestellung gehoert nicht zu diesem Kunden — NICHT herausgeben!",
+                "order_not_found": "Diese Bestellnummer gibt es nicht.",
+                "no_easybill": "Rechnungssystem gerade nicht erreichbar.",
+            }
+            return reasons.get(res.get("reason"), "Konnte die Rechnung gerade nicht abrufen.")
+
         if tool_name == "search_products":
             query = str(tool_input.get("query", "")).strip()
             if not query:
@@ -258,7 +330,7 @@ def call_claude(session, user_message, product_context="", wc_cart=None):
             for block in assistant_content:
                 if block.get("type") == "tool_use":
                     log.info(f"Order tool call: {block['name']}({json.dumps(block.get('input', {}), ensure_ascii=False)[:200]})")
-                    result = _execute_order_tool(block["name"], block.get("input", {}))
+                    result = _execute_order_tool(block["name"], block.get("input", {}), session=session)
                     if not _verified:
                         result = _strip_prices(result)
                     tool_results.append({

@@ -62,3 +62,24 @@ def create_order(customer_id, cart, payment_method: str, channel: str) -> dict:
     except Exception as e:
         log.error(f"chat_order create fehlgeschlagen: {e}")
         return {"ok": False, "error": True}
+
+
+def get_order_history(customer_id, limit=5) -> dict:
+    """Letzte Bestellungen des Kunden. {ok, orders:[...]} oder {error}."""
+    try:
+        return _post("/api/bot-order/history", {"customer_id": int(customer_id), "limit": int(limit)})
+    except Exception as e:
+        log.error(f"chat_order history fehlgeschlagen: {e}")
+        return {"ok": False, "error": True}
+
+
+def get_invoice_link(customer_id, order_id=None) -> dict:
+    """Share-Link zur Rechnung. {ok, url, number} oder {ok:False, reason}."""
+    payload = {"customer_id": int(customer_id)}
+    if order_id:
+        payload["order_id"] = int(order_id)
+    try:
+        return _post("/api/bot-order/invoice-link", payload)
+    except Exception as e:
+        log.error(f"chat_order invoice-link fehlgeschlagen: {e}")
+        return {"ok": False, "error": True}

@@ -19,6 +19,10 @@ Ich bin rund um die Uhr für dich da — so holst du das Meiste raus:
 
 🔁 *Nachbestellen* — "Nochmal das gleiche wie letztes Mal" und fertig
 
+📋 *Deine Bestellungen & Rechnungen*
+• "Zeig mir meine letzten Bestellungen"
+• "Schick mir die Rechnung zur letzten Bestellung"
+
 💳 *Kasse* — sag einfach "Kasse" oder "bestellen":
 • Direkt hier im Chat abschließen (Rechnung oder Vorkasse)
 • Oder per Link im Browser — du wirst automatisch eingeloggt
