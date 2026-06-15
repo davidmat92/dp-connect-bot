@@ -55,6 +55,12 @@ SELF_SERVICE_KEYWORDS = {
     "was habe ich bestellt", "offene rechnung", "offene rechnungen",
     "offene posten", "was muss ich noch zahlen", "was schulde ich",
     "meine rechnungen", "welche rechnungen",
+    # Sendungsverfolgung (verifizierte Kunden → Self-Service-Tracking,
+    # kein Support-Umweg mit E-Mail-Abfrage)
+    "wo bleibt meine bestellung", "wo ist meine bestellung", "wo ist mein paket",
+    "wo bleibt mein paket", "sendungsverfolgung", "tracking", "lieferstatus",
+    "bestellung verfolgen", "schon verschickt", "schon raus", "schon unterwegs",
+    "wann kommt meine bestellung", "wann kommt mein paket",
 }
 
 # Signale, die AUCH mitten im Bestell-Modus zum Support wechseln —

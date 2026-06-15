@@ -22,6 +22,7 @@ Ich bin rund um die Uhr für dich da — so holst du das Meiste raus:
 📋 *Deine Bestellungen & Rechnungen*
 • "Zeig mir meine letzten Bestellungen" (auch ältere — sag "zeig mir mehr")
 • "Was war in Bestellung 8511?" — auch alte Bestellungen im Detail
+• "Wo bleibt meine Bestellung?" — Sendungsverfolgung & DHL-Tracking
 • "Schick mir die Rechnung zur letzten Bestellung"
 • "Welche Rechnungen sind noch offen?" — dein Zahlstatus auf einen Blick
 

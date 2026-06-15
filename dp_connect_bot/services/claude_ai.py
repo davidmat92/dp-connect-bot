@@ -167,6 +167,21 @@ ORDER_TOOLS = [
         },
     },
     {
+        "name": "track_my_order",
+        "description": (
+            "Zeigt Sendungsstatus + DHL-Tracking einer Bestellung DES AKTUELLEN KUNDEN. "
+            "Nutze es bei 'wo bleibt meine Bestellung', 'wo ist mein Paket', 'Sendungsverfolgung', "
+            "'ist meine Bestellung schon raus'. Ohne order_id die letzte Bestellung. "
+            "Nur fuer verifizierte Kunden."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "order_id": {"type": "string", "description": "Bestellnummer (optional)."}
+            },
+        },
+    },
+    {
         "name": "list_my_invoices",
         "description": (
             "Zeigt die Rechnungen DES AKTUELLEN KUNDEN mit Zahlstatus (offen/bezahlt/ueberfaellig) "
@@ -195,7 +210,7 @@ def _execute_order_tool(tool_name, tool_input, session=None):
         format_search_results, format_parent_with_variations, get_category_overview,
     )
     try:
-        if tool_name in ("lookup_my_orders", "get_invoice", "get_order_detail", "list_my_invoices"):
+        if tool_name in ("lookup_my_orders", "get_invoice", "get_order_detail", "list_my_invoices", "track_my_order"):
             verified = (session or {}).get("verified") or {}
             customer_id = verified.get("customer_id")
             if not customer_id:
@@ -240,6 +255,25 @@ def _execute_order_tool(tool_name, tool_input, session=None):
                     "order_not_found": "Diese Bestellnummer gibt es nicht.",
                 }
                 return reasons.get(res.get("reason"), "Konnte die Bestellung nicht laden.")
+
+            if tool_name == "track_my_order":
+                order_id = str(tool_input.get("order_id", "")).strip() or None
+                res = chat_order.get_tracking(customer_id, order_id)
+                if not res.get("ok"):
+                    reasons = {
+                        "no_orders": "Der Kunde hat noch keine Bestellungen.",
+                        "not_owner": "Diese Bestellung gehoert NICHT zu diesem Kunden!",
+                        "order_not_found": "Diese Bestellnummer gibt es nicht.",
+                    }
+                    return reasons.get(res.get("reason"), "Konnte den Sendungsstatus nicht abrufen.")
+                out = f"BESTELLUNG #{res.get('number')} — Status: {res.get('status')}\n{res.get('status_hint', '')}"
+                tr = res.get("tracking")
+                if tr and tr.get("tracking_url"):
+                    num = tr.get("tracking_number", "")
+                    out += f"\n🚚 DHL-Sendungsverfolgung{' (Nr. ' + num + ')' if num else ''}: {tr['tracking_url']}"
+                elif res.get("status_raw") == "completed":
+                    out += "\n(Bestellung abgeschlossen — falls keine Sendungsnummer hinterlegt ist, wurde sie evtl. abgeholt/anders versandt.)"
+                return out
 
             if tool_name == "list_my_invoices":
                 only_open = tool_input.get("only_open", True)

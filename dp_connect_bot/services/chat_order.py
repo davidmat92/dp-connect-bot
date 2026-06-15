@@ -107,3 +107,15 @@ def get_invoices(customer_id, only_open=True) -> dict:
     except Exception as e:
         log.error(f"chat_order invoices fehlgeschlagen: {e}")
         return {"ok": False, "error": True}
+
+
+def get_tracking(customer_id, order_id=None) -> dict:
+    """Sendungsverfolgung + Status einer Bestellung. {ok, status, tracking, ...}."""
+    payload = {"customer_id": int(customer_id)}
+    if order_id:
+        payload["order_id"] = int(order_id)
+    try:
+        return _post("/api/bot-order/tracking", payload)
+    except Exception as e:
+        log.error(f"chat_order tracking fehlgeschlagen: {e}")
+        return {"ok": False, "error": True}
