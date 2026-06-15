@@ -280,12 +280,22 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
     lower_text = text.strip().lower()
 
     # --- Checkout shortcut ---
-    if lower_text in CHECKOUT_WORDS and session.get("cart"):
+    _checkout_intent = lower_text in CHECKOUT_WORDS or any(
+        w in lower_text.split() for w in ("kasse", "checkout", "bestellen", "abschließen", "abschliessen")
+    )
+    if _checkout_intent and session.get("cart"):
         resp = handle_checkout(session, channel)
         if resp:
             track_event("checkout", chat_id, channel)
             session_manager.save(chat_id, session)
             return resp
+    # Checkout-Wunsch bei LEEREM Warenkorb → freundlich statt Modus-Menue
+    if _checkout_intent and not session.get("cart"):
+        session["mode"] = "order"
+        session_manager.save(chat_id, session)
+        return BotResponse(
+            text="Dein Warenkorb ist noch leer! 🛒 Sag mir einfach, was du brauchst — z.B. \"20 Elf Bar 800 Cherry\" — dann pack ich's ein und wir gehen zur Kasse. 😊"
+        )
 
     # --- Cart display shortcut ---
     if lower_text in CART_DISPLAY_WORDS:

@@ -5,6 +5,7 @@ Supports both order mode (simple text) and support mode (tool use).
 
 import json
 import os
+import time
 import requests
 
 from dp_connect_bot.config import ANTHROPIC_API_KEY, CLAUDE_MODEL, log
@@ -437,9 +438,13 @@ def call_claude(session, user_message, product_context="", wc_cart=None):
         if not data:
             return "Bot ist noch nicht konfiguriert (API Key fehlt). Bitte Admin kontaktieren."
 
-        # Tool-Loop: Claude darf den Katalog selbst durchsuchen
+        # Tool-Loop: Claude darf den Katalog selbst durchsuchen.
+        # Wall-Clock-Budget verhindert PythonAnywhere-Request-Timeout (502).
         rounds = 0
-        while data.get("stop_reason") == "tool_use" and rounds < 4:
+        loop_start = time.monotonic()
+        TOOL_BUDGET_S = 18
+        while (data.get("stop_reason") == "tool_use" and rounds < 4
+               and (time.monotonic() - loop_start) < TOOL_BUDGET_S):
             rounds += 1
             assistant_content = data.get("content", [])
             tool_results = []
@@ -456,11 +461,30 @@ def call_claude(session, user_message, product_context="", wc_cart=None):
                     })
             messages.append({"role": "assistant", "content": assistant_content})
             messages.append({"role": "user", "content": tool_results})
-            data = _api_call(SYSTEM_PROMPT, messages, tools=ORDER_TOOLS)
+            # Letzte Runde / Budget fast aus → ohne Tools, damit Claude antworten MUSS
+            budget_left = (time.monotonic() - loop_start) < (TOOL_BUDGET_S - 4)
+            use_tools = ORDER_TOOLS if (rounds < 4 and budget_left) else None
+            data = _api_call(SYSTEM_PROMPT, messages, tools=use_tools)
             if not data:
                 return "Da ist gerade was schiefgelaufen. Versuch's bitte nochmal!"
 
         ai_text = "".join(b["text"] for b in data.get("content", []) if b.get("type") == "text")
+
+        # Loop endete mit offenem tool_use (Budget/Runden) → finaler Call ohne Tools
+        if not ai_text and data.get("stop_reason") == "tool_use":
+            assistant_content = data.get("content", [])
+            tool_results = [{
+                "type": "tool_result", "tool_use_id": b["id"],
+                "content": _execute_order_tool(b["name"], b.get("input", {}), session=session),
+            } for b in assistant_content if b.get("type") == "tool_use"]
+            messages.append({"role": "assistant", "content": assistant_content})
+            messages.append({"role": "user", "content": tool_results})
+            final = _api_call(SYSTEM_PROMPT, messages, tools=None, max_tokens=1024)
+            ai_text = "".join(b["text"] for b in (final or {}).get("content", []) if b.get("type") == "text")
+
+        if not ai_text:
+            ai_text = ("Das hat gerade etwas länger gedauert 😅 Sag mir nochmal kurz, "
+                       "welches Produkt du genau meinst — dann geht's sofort!")
 
         session["conversation"].append({"role": "user", "content": user_message})
         session["conversation"].append({"role": "assistant", "content": ai_text})

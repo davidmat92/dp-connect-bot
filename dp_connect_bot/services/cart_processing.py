@@ -57,6 +57,7 @@ def process_cart_actions(session, ai_response):
         keyboards.append(build_quantity_keyboard(product_id))
 
     # Cart Actions verarbeiten
+    added_count = 0  # Anzahl erfolgreicher add-Actions → EINE Sammel-Bestaetigung
     for match in matches:
         try:
             data = json.loads(match)
@@ -105,8 +106,7 @@ def process_cart_actions(session, ai_response):
                         "price": str(data.get("price", "")),
                         "image_url": img_url,
                     })
-                n = len(session["cart"])
-                clean += f"\n\n✅ Im Warenkorb! ({n} Produkt{'e' if n > 1 else ''})"
+                added_count += 1
                 wc_actions.append(WcAction(action="add", product_id=pid, quantity=qty))
 
             elif action == "remove":
@@ -196,6 +196,11 @@ def process_cart_actions(session, ai_response):
 
         except (json.JSONDecodeError, KeyError) as e:
             log.error(f"Cart action error: {e}")
+
+    # EINE Sammel-Bestaetigung statt einer Zeile pro Produkt
+    if added_count:
+        n = len(session["cart"])
+        clean += f"\n\n✅ Im Warenkorb! ({n} Produkt{'e' if n > 1 else ''})"
 
     # Callback-Request
     if has_callback_request:
