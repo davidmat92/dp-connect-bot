@@ -48,6 +48,13 @@ def whatsapp_webhook():
                     if not phone:
                         continue
 
+                    # Meta wiederholt den Webhook bei langsamer Antwort → dieselbe
+                    # Nachricht nicht doppelt verarbeiten (sonst doppelte Adds/Order).
+                    from dp_connect_bot.services.wa_dedup import seen_before
+                    if seen_before(msg.get("id")):
+                        log.info(f"[WA:{phone}] Duplikat-Webhook uebersprungen (msg {msg.get('id')})")
+                        continue
+
                     # Blaue Haken + "tippt..." sofort anzeigen
                     adapter.mark_read_typing(msg.get("id"))
 
