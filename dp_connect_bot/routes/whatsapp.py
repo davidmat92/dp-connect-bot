@@ -1,5 +1,8 @@
 """WhatsApp webhook route blueprint."""
 
+import threading
+
+import requests
 from flask import Blueprint, request, jsonify
 
 from dp_connect_bot.handlers.unified import unified_handle_message, unified_handle_callback
@@ -9,6 +12,19 @@ from dp_connect_bot.config import WHATSAPP_VERIFY_TOKEN, log
 
 whatsapp_bp = Blueprint("whatsapp", __name__)
 adapter = WhatsAppAdapter()
+
+
+def _forward_to_dptools(payload):
+    """Leitet den rohen Meta-Webhook zusaetzlich an dp-tools weiter (Newsletter-
+    Opt-out: 'Nein'-Antworten auf WhatsApp-Vorlagen). Fire-and-forget — die
+    Weiterleitung darf den Bot NIEMALS stoeren oder verlangsamen."""
+    try:
+        requests.post(
+            "https://api.tools.dpconnect.de/api/whatsapp/webhook",
+            json=payload, timeout=4,
+        )
+    except Exception:
+        pass
 
 
 @whatsapp_bp.route("/whatsapp", methods=["GET"])
@@ -31,6 +47,11 @@ def whatsapp_webhook():
         payload = request.get_json()
         if not payload:
             return jsonify(ok=True), 200
+
+        # Eingehenden Webhook UNVERAENDERT zusaetzlich an dp-tools weiterleiten
+        # (Newsletter-Opt-out). Fire-and-forget im Thread: weder langsamer noch
+        # blockierend; die Antwort an Meta (HTTP 200) bleibt unveraendert.
+        threading.Thread(target=_forward_to_dptools, args=(payload,), daemon=True).start()
 
         # Gepufferte Sends nachliefern (nach Meta-Stoerung)
         from dp_connect_bot.services.send_queue import flush, pending_count
