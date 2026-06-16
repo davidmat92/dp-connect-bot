@@ -1,14 +1,37 @@
 import hashlib
+import hmac
 import time
 
 from flask import Blueprint, request, jsonify
 
-from dp_connect_bot.config import BETA_HINT_PLAIN, log
+from dp_connect_bot.config import BETA_HINT_PLAIN, WP_BOT_SECRET, log
 from dp_connect_bot.handlers.unified import unified_handle_message, unified_handle_callback
 from dp_connect_bot.adapters.webchat import WebchatAdapter
 from dp_connect_bot.models.session import session_manager
 
 webchat_bp = Blueprint("webchat", __name__)
+
+
+def _validate_webchat_auth(uid, email, auth) -> bool:
+    """Prueft das HMAC-signierte Identitaets-Token aus dem WP-Widget.
+
+    Das Widget signiert serverseitig mit dem geteilten Secret (WP: DP_BOT_SECRET
+    == Bot: WP_BOT_SECRET): auth = '<ts>.<hexsig>' ueber 'uid|email|ts'. Ohne
+    gueltige Signatur darf ein Client KEINEN verifizierten B2B-Status bekommen
+    (sonst koennte jeder per beliebiger wp_user_id Preise/fremde Bestellungen abgreifen).
+    """
+    if not WP_BOT_SECRET or not auth or "." not in str(auth):
+        return False
+    try:
+        ts_str, sig = str(auth).split(".", 1)
+        ts = int(ts_str)
+    except (ValueError, TypeError):
+        return False
+    if abs(time.time() - ts) > 86400:  # Token max. 24h gueltig
+        return False
+    payload = f"{uid}|{email}|{ts}"
+    expected = hmac.new(WP_BOT_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, sig)
 
 
 _init_hits = {}  # {ip: [timestamps]} — Flood-Schutz (pro Worker, reicht als Bremse)
@@ -44,10 +67,23 @@ def webchat_init():
         if data.get("customer_name"):
             session["customer_name"] = data["customer_name"]
 
-        if data.get("wp_user_id"):
+        wp_user_id = data.get("wp_user_id")
+        # SICHERHEIT: clientseitige wp_user_id darf NUR mit gueltiger HMAC-Signatur
+        # des WP-Widgets verifizierten B2B-Status geben. Stufenweise Einfuehrung
+        # ueber die Config-Flagge (erst loggen, dann scharfschalten).
+        from dp_connect_bot.services.bot_config import load_bot_config
+        auth_ok = _validate_webchat_auth(wp_user_id, data.get("wp_email", ""), data.get("wp_auth", "")) if wp_user_id else False
+        enforce = bool(load_bot_config().get("webchat_require_signed_auth"))
+
+        if wp_user_id and not (enforce and not auth_ok):
+            if auth_ok:
+                log.info(f"[webchat_init] Signatur gueltig fuer wp_user_id={wp_user_id}")
+            else:
+                log.warning(f"[webchat_init] wp_user_id={wp_user_id} OHNE gueltige Signatur "
+                            f"(enforce={'AN' if enforce else 'AUS'}, {'verworfen' if enforce else 'noch akzeptiert'})")
             session["is_guest"] = False
             session.setdefault("user_info", {}).update({
-                "wp_user_id": data.get("wp_user_id"),
+                "wp_user_id": wp_user_id,
                 "wp_display_name": data.get("wp_display_name", ""),
                 "wp_email": data.get("wp_email", ""),
                 "wp_username": data.get("wp_username", ""),
@@ -56,12 +92,14 @@ def webchat_init():
                 session["customer_name"] = data["wp_display_name"]
             # Eingeloggte Shop-Kunden sind automatisch verifiziert (B2B-Preise)
             session["verified"] = {
-                "customer_id": data.get("wp_user_id"),
+                "customer_id": wp_user_id,
                 "name": data.get("wp_display_name", ""),
                 "firma": "",
                 "email": data.get("wp_email", ""),
             }
         else:
+            if wp_user_id:
+                log.warning(f"[webchat_init] wp_user_id={wp_user_id} OHNE gueltige Signatur → Gast (enforce AN)")
             session["is_guest"] = True
 
         session_manager.save(chat_id, session)

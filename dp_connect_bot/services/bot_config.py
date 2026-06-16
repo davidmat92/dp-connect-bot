@@ -40,6 +40,10 @@ DEFAULT_DISABLED_MESSAGE = (
 DEFAULTS = {
     "order_enabled": True,
     "chat_checkout_enabled": False,  # Bestellung direkt im Chat abschliessen
+    # Webchat-Verifizierung: nur mit gueltiger HMAC-Signatur des WP-Widgets als
+    # B2B-Kunde anerkennen. Default AUS fuer stufenweise Einfuehrung (erst Logs
+    # pruefen, dass eingeloggte Kunden korrekt signieren, DANN scharfschalten).
+    "webchat_require_signed_auth": False,
     "channels": {},
 }
 

@@ -311,7 +311,7 @@ async function ensureInit(){
   if(initPromise)return initPromise;
   initPromise=(async()=>{
     const vid=localStorage.getItem("dp_visitor")||(()=>{const id=Date.now().toString(36)+Math.random().toString(36);localStorage.setItem("dp_visitor",id);return id})();
-    try{const initData={visitor_id:vid};if(WP_USER){initData.wp_user_id=WP_USER.id;initData.wp_display_name=WP_USER.name;initData.wp_email=WP_USER.email;initData.wp_username=WP_USER.login;initData.customer_name=WP_USER.name}const r=await fetch(API+"/chat/init",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(initData)});const d=await r.json();if(d.ok)chatId=d.chat_id;saveHistory()}catch(e){}
+    try{const initData={visitor_id:vid};if(WP_USER){initData.wp_user_id=WP_USER.id;initData.wp_display_name=WP_USER.name;initData.wp_email=WP_USER.email;initData.wp_username=WP_USER.login;initData.customer_name=WP_USER.name;initData.wp_auth=WP_USER.auth}const r=await fetch(API+"/chat/init",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(initData)});const d=await r.json();if(d.ok)chatId=d.chat_id;saveHistory()}catch(e){}
   })();
   return initPromise;
 }
@@ -552,7 +552,11 @@ function dpc_embed_shortcode($atts) {
     $wp_user_data = [];
     if ($is_logged_in) {
         $u = wp_get_current_user();
-        $wp_user_data = ['id'=>$u->ID,'name'=>$u->display_name,'email'=>$u->user_email,'login'=>$u->user_login];
+        // HMAC-signiertes Identitaets-Token, damit der Bot die wp_user_id NICHT
+        // blind glaubt (sonst koennte jeder per beliebiger ID B2B-Zugang erschleichen).
+        $_dpc_ts = time();
+        $_dpc_sig = defined('DP_BOT_SECRET') ? hash_hmac('sha256', $u->ID.'|'.$u->user_email.'|'.$_dpc_ts, DP_BOT_SECRET) : '';
+        $wp_user_data = ['id'=>$u->ID,'name'=>$u->display_name,'email'=>$u->user_email,'login'=>$u->user_login,'auth'=>$_dpc_ts.'.'.$_dpc_sig];
     }
     echo dpc_js($api, 'DPE', $ids, $ajax_url, $wp_user_data);
   ?></script>
@@ -673,7 +677,11 @@ function dpc_widget_shortcode($atts) {
     $wp_user_data = [];
     if ($is_logged_in) {
         $u = wp_get_current_user();
-        $wp_user_data = ['id'=>$u->ID,'name'=>$u->display_name,'email'=>$u->user_email,'login'=>$u->user_login];
+        // HMAC-signiertes Identitaets-Token, damit der Bot die wp_user_id NICHT
+        // blind glaubt (sonst koennte jeder per beliebiger ID B2B-Zugang erschleichen).
+        $_dpc_ts = time();
+        $_dpc_sig = defined('DP_BOT_SECRET') ? hash_hmac('sha256', $u->ID.'|'.$u->user_email.'|'.$_dpc_ts, DP_BOT_SECRET) : '';
+        $wp_user_data = ['id'=>$u->ID,'name'=>$u->display_name,'email'=>$u->user_email,'login'=>$u->user_login,'auth'=>$_dpc_ts.'.'.$_dpc_sig];
     }
     echo dpc_js($api, 'DPW', $ids, $ajax_url, $wp_user_data);
   ?>
