@@ -75,6 +75,13 @@ def webchat_init():
         auth_ok = _validate_webchat_auth(wp_user_id, data.get("wp_email", ""), data.get("wp_auth", "")) if wp_user_id else False
         enforce = bool(load_bot_config().get("webchat_require_signed_auth"))
 
+        if wp_user_id:
+            # Audit fuer den Staging-Rollout: zeigt im Admin, ob eingeloggte
+            # Kunden korrekt signieren (bevor scharfgeschaltet wird).
+            from dp_connect_bot.services.history import track_event
+            track_event("webchat_auth", chat_id, "web",
+                        f"uid={wp_user_id} valid={int(bool(auth_ok))} enforce={int(enforce)}")
+
         if wp_user_id and not (enforce and not auth_ok):
             if auth_ok:
                 log.info(f"[webchat_init] Signatur gueltig fuer wp_user_id={wp_user_id}")
