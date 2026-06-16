@@ -22,32 +22,6 @@ def _require_admin():
     return key == ADMIN_API_KEY
 
 
-@admin_bp.route("/admin/webchat-auth", methods=["GET"])
-def admin_webchat_auth():
-    """Zeigt die letzten Webchat-Signatur-Ergebnisse (Staging-Rollout des
-    HMAC-Identitaets-Schutzes): valid=1 heisst, die Signatur des eingeloggten
-    Kunden stimmt → dann kann webchat_require_signed_auth scharfgeschaltet werden."""
-    if not _require_admin():
-        return jsonify({"error": "unauthorized"}), 401
-    rows = []
-    try:
-        with sqlite3.connect(HISTORY_DB_PATH) as conn:
-            cur = conn.execute(
-                "SELECT timestamp, data FROM events WHERE event_type='webchat_auth' "
-                "ORDER BY timestamp DESC LIMIT 30")
-            rows = [{"ts": t, "info": d} for (t, d) in cur.fetchall()]
-    except Exception as e:
-        return jsonify({"error": str(e)}), 200
-    valid = sum(1 for r in rows if "valid=1" in r["info"])
-    invalid = sum(1 for r in rows if "valid=0" in r["info"])
-    return jsonify({
-        "recent": rows,
-        "valid_count": valid,
-        "invalid_count": invalid,
-        "hint": "valid=1 bei eingeloggten Kunden → webchat_require_signed_auth scharfschalten",
-    }), 200
-
-
 @admin_bp.route("/admin/sessions", methods=["GET"])
 def admin_sessions():
     if not _require_admin():
