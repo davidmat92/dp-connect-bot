@@ -206,7 +206,12 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
 
     # --- Callback-like strings from WhatsApp/channel button clicks ---
     # WhatsApp sends button IDs as regular text, route them to callback handler
-    _CB_PREFIXES = ("mode_", "sel_", "qty_", "custom_", "cat_", "reorder_", "cb_", "login_", "done_")
+    # WhatsApp liefert Button-Klicks als Text (die callback_data-ID) — ALLE
+    # Keyboard-Prefixe muessen hier stehen, sonst landet der Klick bei der KI
+    # statt im Callback-Handler. "chatorder_" fehlte → Chat-Bestellung per
+    # Rechnung/Vorkasse loeste auf WhatsApp nichts aus.
+    _CB_PREFIXES = ("mode_", "sel_", "qty_", "custom_", "cat_", "reorder_",
+                    "cb_", "login_", "done_", "chatorder_")
     if stripped.startswith(_CB_PREFIXES) or stripped == "noop":
         resp = unified_handle_callback(chat_id, stripped, channel=channel)
         session_manager.save(chat_id, session)

@@ -29,10 +29,16 @@ class WhatsAppAdapter(ChannelAdapter):
         # Build WhatsApp-specific UI
         buttons = None
         list_menu = None
+        text_suffix = ""
 
         for kb in response.keyboards:
             if kb.type == KeyboardType.FLAVORS:
-                list_menu = self._build_flavor_list(kb.parent_id)
+                list_menu, more = self._build_flavor_list(kb.parent_id)
+                if more:
+                    # WhatsApp-Liste kann max. 10 Zeilen — bei mehr Sorten den
+                    # Kunden NICHT im Dunkeln lassen, sondern auf Tippen hinweisen.
+                    text_suffix = (f"\n\n💬 Es gibt noch {more} weitere Sorten — "
+                                   "tippe einfach den Namen, dann pack ich sie dir ein!")
                 break
             elif kb.type == KeyboardType.QUANTITIES:
                 list_menu = self._build_quantity_list(kb)
@@ -72,7 +78,7 @@ class WhatsAppAdapter(ChannelAdapter):
                 break
 
         # Clean markdown for WhatsApp (remove unsupported syntax)
-        text = self._clean_text(response.text)
+        text = self._clean_text(response.text) + text_suffix
         self._send_message(chat_id, text, buttons=buttons, list_menu=list_menu)
 
     def send_typing(self, chat_id):
@@ -156,6 +162,29 @@ class WhatsAppAdapter(ChannelAdapter):
             )
             if not resp.ok:
                 log.error(f"WhatsApp send error: {resp.text}")
+                # Interaktive Nachricht von Meta abgelehnt (z.B. Param-Fehler 100:
+                # Titel/Body zu lang, zu viele Rows) → als REINEN TEXT nachliefern,
+                # damit der Kunde wenigstens die Antwort bekommt statt nichts.
+                if payload.get("type") == "interactive":
+                    try:
+                        err_code = resp.json().get("error", {}).get("code")
+                    except Exception:
+                        err_code = None
+                    if err_code == 100 or resp.status_code == 400:
+                        try:
+                            r2 = requests.post(
+                                f"{WHATSAPP_API}/{WHATSAPP_PHONE_ID}/messages",
+                                headers=headers,
+                                json={"messaging_product": "whatsapp", "to": phone,
+                                      "type": "text", "text": {"body": text[:4096]}},
+                                timeout=10,
+                            )
+                            if r2.ok:
+                                log.info("WhatsApp: interaktiv abgelehnt → als Text nachgeliefert")
+                                return True
+                            log.error(f"WhatsApp text-fallback error: {r2.text}")
+                        except Exception as e2:
+                            log.error(f"WhatsApp text-fallback exception: {e2}")
                 self._maybe_enqueue(resp, payload)
                 return False
             return True
@@ -180,26 +209,31 @@ class WhatsAppAdapter(ChannelAdapter):
         enqueue(payload)
 
     def _build_flavor_list(self, parent_id):
-        """Build WhatsApp list menu with flavors (max 10 rows)."""
+        """Build WhatsApp list menu with flavors (max 10 rows).
+
+        Returns (menu, more_count): more_count = wie viele Sorten NICHT in die
+        Liste passten (WhatsApp-Limit 10), damit der Aufrufer darauf hinweisen kann.
+        """
         variations = cache.get_variations_available(parent_id)
         if not variations:
-            return None
+            return None, 0
 
-        variations = variations[:10]
+        shown = variations[:10]
+        more = len(variations) - len(shown)
         rows = []
-        for v in variations:
+        for v in shown:
             name = get_variant_display_name(v)
             price = format_price_de(v.get("price"))
             rows.append({
                 "id": f"sel_{v['id']}",
                 "title": name[:24],
-                "description": f"{price}/Stk",
+                "description": f"{price}/Stk"[:72],
             })
 
         return {
             "button_text": "Geschmack wählen",
             "sections": [{"title": "Verfügbare Geschmäcker", "rows": rows}],
-        }
+        }, more
 
     def _build_quantity_list(self, kb):
         """Build WhatsApp list menu with quantities (max 10 rows)."""
@@ -238,8 +272,8 @@ class WhatsAppAdapter(ChannelAdapter):
                 desc = f"= {format_price_de(total)} netto"
             rows.append({
                 "id": f"qty_{kb.product_id}_{qty}",
-                "title": f"{qty} Stück",
-                "description": desc,
+                "title": f"{qty} Stück"[:24],
+                "description": desc[:72],
             })
 
         return {
