@@ -139,8 +139,12 @@ class WebchatAdapter(ChannelAdapter):
                 img = parent.get("image_url", "")
 
             buttons.append({
+                # Widget-JS liest b.label + b.callback; alte Felder (text/
+                # callback_data) zur Sicherheit mitsenden, damit beide Stände passen.
                 "text": name,
+                "label": name,
                 "callback_data": f"sel_{v['id']}",
+                "callback": f"sel_{v['id']}",
                 "sublabel": price,
                 "stock_label": sl,
                 "image_url": img,
@@ -178,8 +182,11 @@ class WebchatAdapter(ChannelAdapter):
                 total = price_num * qty
                 sublabel = format_price_de(total)
             buttons.append({
+                # Widget-JS liest b.qty + b.callback; alte Felder mitsenden.
                 "text": label,
+                "qty": qty,
                 "callback_data": f"qty_{kb.product_id}_{qty}",
+                "callback": f"qty_{kb.product_id}_{qty}",
                 "sublabel": sublabel,
             })
 
