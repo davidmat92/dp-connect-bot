@@ -224,10 +224,15 @@ class WhatsAppAdapter(ChannelAdapter):
         for v in shown:
             name = get_variant_display_name(v)
             price = format_price_de(v.get("price"))
+            # Row-Titel max 24 Zeichen. Wird der Name gekuerzt, kann das
+            # unterscheidende Suffix (z.B. Nikotinstaerke "(20 mg)") verloren
+            # gehen → zwei Varianten saehen identisch aus. Dann den VOLLEN Namen
+            # in die Description (72 Zeichen Platz) ziehen, damit sie unterscheidbar bleiben.
+            desc = f"{name} · {price}/Stk"[:72] if len(name) > 24 else f"{price}/Stk"[:72]
             rows.append({
                 "id": f"sel_{v['id']}",
                 "title": name[:24],
-                "description": f"{price}/Stk"[:72],
+                "description": desc,
             })
 
         return {
