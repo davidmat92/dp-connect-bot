@@ -616,6 +616,8 @@ def admin_config():
             config["order_enabled"] = bool(data["order_enabled"])
         if "chat_checkout_enabled" in data:
             config["chat_checkout_enabled"] = bool(data["chat_checkout_enabled"])
+        if "webchat_require_signed_auth" in data:
+            config["webchat_require_signed_auth"] = bool(data["webchat_require_signed_auth"])
         # Per-channel overrides: {"channels": {"telegram": {"enabled": false, ...}}}
         if isinstance(data.get("channels"), dict):
             channels_cfg = config.setdefault("channels", {})
