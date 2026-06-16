@@ -22,6 +22,65 @@ def _require_admin():
     return key == ADMIN_API_KEY
 
 
+@admin_bp.route("/admin/wa-render", methods=["GET"])
+def admin_wa_render():
+    """TEMP: rendert WhatsApp-Listen-Payloads echter Produkte + prueft Meta-Limits.
+    Sendet NICHTS — reine Validierung."""
+    if not _require_admin():
+        return jsonify({"error": "unauthorized"}), 401
+    from dp_connect_bot.adapters.whatsapp import WhatsAppAdapter
+    from dp_connect_bot.services.product_cache import cache, ensure_cache
+    from dp_connect_bot.utils.formatting import get_variant_display_name
+    from dp_connect_bot.models.response import Keyboard, KeyboardType
+    ensure_cache()
+    q = (request.args.get("q") or "").strip().lower()
+    adapter = WhatsAppAdapter()
+
+    # Passende Parent-Produkte (mit Varianten) finden
+    parents = [p for p in cache.get_parents_available() if q in p.get("title", "").lower()]
+    parents = parents[:6]
+
+    def _check_list(menu):
+        if not menu:
+            return {"rows": 0}
+        rows = menu["sections"][0]["rows"]
+        return {
+            "rows": len(rows),
+            "rows_over_10": len(rows) > 10,
+            "button_text_len": len(menu.get("button_text", "")),
+            "section_title_len": len(menu["sections"][0].get("title", "")),
+            "max_title_len": max((len(r["title"]) for r in rows), default=0),
+            "max_desc_len": max((len(r.get("description", "")) for r in rows), default=0),
+            "sample": [{"id": r["id"], "title": r["title"], "desc": r.get("description", "")} for r in rows[:3]],
+        }
+
+    out = []
+    for p in parents:
+        pid = str(p["id"])
+        variations = cache.get_variations_available(pid)
+        flavor_menu, more = adapter._build_flavor_list(pid)
+        # Roh-Namenlaengen VOR Kuerzung (gibt es >24-Zeichen-Namen, die truncaten?)
+        raw_names = [get_variant_display_name(v) for v in variations]
+        long_names = [n for n in raw_names if len(n) > 24]
+        # Quantity-Liste fuer die erste Variante
+        qty_menu = None
+        if variations:
+            first = variations[0]
+            kb = Keyboard(type=KeyboardType.QUANTITIES, product_id=str(first["id"]),
+                          vpe=str(first.get("vpe") or 1))
+            qty_menu = adapter._build_quantity_list(kb)
+        out.append({
+            "parent": p.get("title"),
+            "parent_id": pid,
+            "variation_count": len(variations),
+            "more_count": more,
+            "flavor_list": _check_list(flavor_menu),
+            "quantity_list": _check_list(qty_menu),
+            "truncated_names": long_names[:5],
+        })
+    return jsonify({"query": q, "matched_parents": len(parents), "results": out}), 200
+
+
 @admin_bp.route("/admin/sessions", methods=["GET"])
 def admin_sessions():
     if not _require_admin():
