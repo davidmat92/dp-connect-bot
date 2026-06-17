@@ -22,6 +22,24 @@ def _require_admin():
     return key == ADMIN_API_KEY
 
 
+@admin_bp.route("/admin/wa-last-buttons", methods=["GET"])
+def admin_wa_last_buttons():
+    """TEMP: zeigt die zuletzt empfangenen WhatsApp-Button-/Interactive-Strukturen
+    (ohne Telefonnummer), um die echte Beschriftung der Template-Buttons zu sehen."""
+    if not _require_admin():
+        return jsonify({"error": "unauthorized"}), 401
+    rows = []
+    try:
+        with sqlite3.connect(HISTORY_DB_PATH) as conn:
+            cur = conn.execute(
+                "SELECT timestamp, data FROM events WHERE event_type='wa_btn_debug' "
+                "ORDER BY timestamp DESC LIMIT 20")
+            rows = [{"ts": t, "info": d} for (t, d) in cur.fetchall()]
+    except Exception as e:
+        return jsonify({"error": str(e)}), 200
+    return jsonify({"recent": rows}), 200
+
+
 @admin_bp.route("/admin/sessions", methods=["GET"])
 def admin_sessions():
     if not _require_admin():
