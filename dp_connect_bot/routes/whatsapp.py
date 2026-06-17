@@ -195,7 +195,7 @@ def whatsapp_webhook():
                             adapter._send_message(phone, "Das Foto konnte ich gerade nicht laden. 😅 Probier's nochmal oder beschreib mir das Produkt!")
                             continue
                         from dp_connect_bot.services.photo_vision import describe_photo, build_photo_message
-                        desc = describe_photo(image_bytes, mime)
+                        desc = describe_photo(image_bytes, mime, caption)
                         if not desc:
                             adapter._send_message(phone, "Das Foto konnte ich nicht auswerten. 😅 Beschreib mir das Produkt einfach kurz!")
                             continue

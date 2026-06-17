@@ -537,11 +537,12 @@ def admin_photo_test():
         from dp_connect_bot.services.photo_vision import describe_photo, build_photo_message
         data = request.get_json() or {}
         url = data.get("image_url", "")
+        caption = data.get("caption", "")
         resp = _requests.get(url, timeout=20)
         resp.raise_for_status()
         mime = resp.headers.get("Content-Type", "image/jpeg").split(";")[0]
-        desc = describe_photo(resp.content, mime)
-        return jsonify(ok=True, description=desc, message=build_photo_message(desc, data.get("caption", "")))
+        desc = describe_photo(resp.content, mime, caption)
+        return jsonify(ok=True, description=desc, message=build_photo_message(desc, caption))
     except Exception as e:
         log.error(f"[admin_photo_test] Error: {e}")
         return jsonify(ok=False, error=str(e)[:200]), 500
