@@ -55,6 +55,7 @@ def process_cart_actions(session, ai_response):
 
     keyboards = []
     wc_actions = []
+    session.setdefault("cart", [])  # defensiv: alte Sessions ohne cart-Key
 
     # Keyboard-Trigger extrahieren
     flavor_matches = re.findall(r"\[SHOW_FLAVORS:(\d+)\]", clean)
@@ -81,7 +82,21 @@ def process_cart_actions(session, ai_response):
 
             if action == "add":
                 pid = str(data["product_id"])
-                qty = data.get("quantity", 1)
+                # Menge defensiv zu int (Modell liefert "quantity" manchmal als
+                # String "30" statt Zahl 30 → sonst crasht 'qty % vpe' mit
+                # TypeError und reisst die GANZE Bestellung mit, weil das except
+                # unten nur JSONDecodeError/KeyError faengt). Fehlt die Menge ganz
+                # → 1 (VPE rundet hoch); ist sie vorhanden aber unbrauchbar →
+                # Position ueberspringen statt eine Phantom-Menge einzupacken.
+                raw_qty = data.get("quantity", 1)
+                try:
+                    qty = int(float(raw_qty))
+                except (ValueError, TypeError):
+                    qty = 0
+                if qty <= 0:
+                    log.warning(f"Cart add: ungueltige Menge {raw_qty!r} fuer {pid} - uebersprungen")
+                    add_parse_failed = True
+                    continue
                 product_check = cache.get_product_by_id(pid)
 
                 # VPE enforcement: round up quantity to next VPE multiple
@@ -220,10 +235,11 @@ def process_cart_actions(session, ai_response):
                 else:
                     clean += "\n\nDein Warenkorb ist noch leer."
 
-        except (json.JSONDecodeError, KeyError) as e:
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
             log.error(f"Cart action error: {e}")
             # Nur bei einer fehlgeschlagenen ADD-Aktion warnen (clear/checkout
-            # ohne Erfolg soll keinen Einpack-Hinweis erzeugen).
+            # ohne Erfolg soll keinen Einpack-Hinweis erzeugen). Ein einzelner
+            # fehlerhafter Block darf NIE die uebrigen Positionen mitreissen.
             if '"add"' in match or "'add'" in match:
                 add_parse_failed = True
 
@@ -231,6 +247,11 @@ def process_cart_actions(session, ai_response):
     if added_count:
         n = len(session["cart"])
         clean += f"\n\n✅ Im Warenkorb! ({n} Produkt{'e' if n > 1 else ''})"
+        if add_parse_failed:
+            # Teilerfolg: manche Positionen klappten, mind. eine nicht → der Kunde
+            # darf nicht denken, ALLES sei drin.
+            clean += ("\n\n⚠️ Eine Position konnte ich nicht einpacken — sag sie mir bitte "
+                      "nochmal kurz mit Menge, dann ergänze ich sie!")
     elif add_parse_failed:
         # Eine add-Aktion war fehlerhaft und es wurde NICHTS eingepackt → der
         # Kunde darf nicht faelschlich denken, es sei alles im Warenkorb.

@@ -667,9 +667,12 @@ def _handle_quantity_selection(session, chat_id, callback_data):
     brand = product.get("brand", "")
 
     # Add to cart
+    from dp_connect_bot.services.cart_processing import _apply_staffel_price
+    session.setdefault("cart", [])  # defensiv: alte Sessions ohne cart-Key
     existing = next((i for i in session["cart"] if str(i["product_id"]) == product_id), None)
     if existing:
         existing["quantity"] += quantity
+        _apply_staffel_price(existing, product)  # Mengen-Button kann Staffel-Schwelle kreuzen
         total_qty = existing["quantity"]
     else:
         img_url = product.get("image_url", "")
@@ -677,13 +680,15 @@ def _handle_quantity_selection(session, chat_id, callback_data):
             parent_p = cache.get_product_by_id(product["post_parent"])
             if parent_p:
                 img_url = parent_p.get("image_url", "")
-        session["cart"].append({
+        new_item = {
             "product_id": product_id,
             "title": f"{brand} - {name}".strip(" -"),
             "quantity": quantity,
             "price": str(price),
             "image_url": img_url,
-        })
+        }
+        _apply_staffel_price(new_item, product)  # Staffelpreis fuer die gewaehlte Menge
+        session["cart"].append(new_item)
         total_qty = quantity
 
     session["conversation"].append({"role": "user", "content": f"[Button geklickt: {quantity}x {name}]"})

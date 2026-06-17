@@ -203,9 +203,11 @@ def handle_pending_quantity(session, text):
             pass
 
     # Add to cart
+    from dp_connect_bot.services.cart_processing import _apply_staffel_price
     existing = next((i for i in session["cart"] if str(i["product_id"]) == pid), None)
     if existing:
         existing["quantity"] += quantity
+        _apply_staffel_price(existing, product_check)  # Menge kann Staffel-Schwelle kreuzen
     else:
         img_url = ""
         if product_check:
@@ -214,10 +216,12 @@ def handle_pending_quantity(session, text):
                 parent_p = cache.get_product_by_id(product_check["post_parent"])
                 if parent_p:
                     img_url = parent_p.get("image_url", "")
-        session["cart"].append({
+        new_item = {
             "product_id": pid, "title": label, "quantity": quantity,
             "price": str(price), "image_url": img_url,
-        })
+        }
+        _apply_staffel_price(new_item, product_check)  # Staffelpreis fuer die Menge
+        session["cart"].append(new_item)
 
     session["conversation"].append({"role": "user", "content": f"{quantity}x {name}"})
     session["conversation"].append({"role": "assistant", "content": f"✅ {quantity}x {name} im Warenkorb!"})
