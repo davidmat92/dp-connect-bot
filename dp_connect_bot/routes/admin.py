@@ -22,6 +22,31 @@ def _require_admin():
     return key == ADMIN_API_KEY
 
 
+@admin_bp.route("/admin/reload-cache", methods=["POST", "GET"])
+def admin_reload_cache():
+    """Laedt den Produkt-Cache SYNCHRON aus WooCommerce neu (frische Preise/Lager)
+    und speichert den Snapshot. Gedacht fuer einen PythonAnywhere-Scheduled-Task
+    (Cron alle ~15 Min) — der Hintergrund-Thread-Refresh laeuft auf PA nicht
+    zuverlaessig. Andere Worker uebernehmen den frischen Snapshot automatisch."""
+    if not _require_admin():
+        return jsonify(ok=False, error="Unauthorized"), 401
+    import time as _t
+    from dp_connect_bot.services.product_cache import cache
+    t0 = _t.monotonic()
+    try:
+        cache.load()
+    except Exception as e:
+        log.error(f"reload-cache fehlgeschlagen: {e}")
+        return jsonify(ok=False, error=str(e)[:300]), 200
+    return jsonify(
+        ok=True,
+        source=cache.source,
+        available=len(cache.available),
+        total=len(cache.all_products),
+        took_s=round(_t.monotonic() - t0, 1),
+    ), 200
+
+
 @admin_bp.route("/admin/sessions", methods=["GET"])
 def admin_sessions():
     if not _require_admin():
