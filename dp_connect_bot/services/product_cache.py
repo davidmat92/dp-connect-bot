@@ -5,9 +5,10 @@ Product Cache – loads and indexes products from WooCommerce (primary) or Airta
 import html
 import json
 import os
+import time
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timedelta
 from threading import Lock, Thread
 
 from dp_connect_bot.config import (
@@ -19,6 +20,31 @@ from dp_connect_bot.config import (
 from dp_connect_bot.utils.formatting import kebab_to_readable
 
 _on_cache_loaded = None
+
+# Prozess-uebergreifende Refresh-Sperre (PA hat mehrere Worker, die sich die Disk
+# teilen) — verhindert, dass mehrere Worker gleichzeitig den teuren WC-Load machen.
+_REFRESH_LOCK_FILE = PRODUCT_SNAPSHOT_PATH + ".refreshing"
+
+
+def _claim_refresh(max_age=180):
+    """Atomarer Claim ueber eine Lock-Datei. True = DIESER Aufruf macht den Refresh."""
+    try:
+        if os.path.exists(_REFRESH_LOCK_FILE) and (time.time() - os.path.getmtime(_REFRESH_LOCK_FILE)) > max_age:
+            os.remove(_REFRESH_LOCK_FILE)  # veralteter Claim (Worker gestorben) → freigeben
+        fd = os.open(_REFRESH_LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.close(fd)
+        return True
+    except FileExistsError:
+        return False
+    except Exception:
+        return False
+
+
+def _release_refresh():
+    try:
+        os.remove(_REFRESH_LOCK_FILE)
+    except Exception:
+        pass
 
 
 def staffel_price_for(product, qty):
@@ -66,6 +92,25 @@ class ProductCache:
         if not self.last_loaded:
             return True
         return (datetime.now() - self.last_loaded).total_seconds() / 60 > CACHE_REFRESH_MINUTES
+
+    def snapshot_newer_than_memory(self):
+        """True, wenn der Disk-Snapshot nennenswert neuer ist als der Speicher-Cache
+        dieses Workers — d.h. ein anderer Worker oder der Cron-Reload hat aufgefrischt.
+        Dann reicht ein schneller Snapshot-Load statt eines teuren WC-Loads."""
+        try:
+            if not self.last_loaded or not os.path.exists(PRODUCT_SNAPSHOT_PATH):
+                return False
+            mtime = datetime.fromtimestamp(os.path.getmtime(PRODUCT_SNAPSHOT_PATH))
+            return mtime > self.last_loaded + timedelta(seconds=60)
+        except Exception:
+            return False
+
+    def critically_stale(self):
+        """Deutlich aelter als das Refresh-Ziel → der normale Refresh greift nicht
+        (z.B. weil der Hintergrund-Thread auf PA nicht laeuft) → Selbstheilung."""
+        if not self.last_loaded:
+            return True
+        return (datetime.now() - self.last_loaded).total_seconds() / 60 > (CACHE_REFRESH_MINUTES * 2.5)
 
     def load(self):
         available, all_prods = None, None
@@ -659,9 +704,25 @@ def ensure_cache():
             cache.load()
         except Exception as e:
             log.error(f"Cache-Load fehlgeschlagen: {e}")
-    # 3. Daten vorhanden aber veraltet? Background-Refresh, alte Daten weiter nutzen
+    # 3. Daten vorhanden aber veraltet?
     elif cache.needs_refresh():
-        cache.refresh_in_background()
+        if cache.snapshot_newer_than_memory():
+            # Ein anderer Worker / der Cron-Reload hat schon aufgefrischt →
+            # frischen Snapshot schnell uebernehmen (~1s statt ~30s WC-Load).
+            cache.load_snapshot()
+        elif cache.critically_stale() and _claim_refresh():
+            # Selbstheilung (falls kein Cron laeuft und der Hintergrund-Thread auf
+            # PA nicht greift): genau EIN Request laedt synchron, danach uebernehmen
+            # alle Worker den frischen Snapshot. Lock verhindert Mehrfach-Loads.
+            try:
+                log.info("Cache kritisch veraltet → synchroner Selbstheilungs-Reload")
+                cache.load()
+            except Exception as e:
+                log.error(f"Selbstheilungs-Reload fehlgeschlagen: {e}")
+            finally:
+                _release_refresh()
+        else:
+            cache.refresh_in_background()  # best-effort (auf PA unzuverlaessig)
 
     # 4. Letzter Fallback: CSV
     if not cache.all_products:
