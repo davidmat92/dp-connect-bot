@@ -27,6 +27,21 @@ def _forward_to_dptools(payload):
         pass
 
 
+def _is_template_button_reply(p):
+    """True, wenn der Webhook eine Antwort auf einen Newsletter-Template-Quick-
+    Reply-Button enthaelt. Die kommen als Nachrichtentyp 'button' (im Gegensatz
+    zu den EIGENEN Bot-Buttons, die als 'interactive'/button_reply kommen)."""
+    try:
+        for e in p.get("entry", []):
+            for c in e.get("changes", []):
+                for m in c.get("value", {}).get("messages", []):
+                    if m.get("type") == "button":
+                        return True
+    except Exception:
+        pass
+    return False
+
+
 @whatsapp_bp.route("/whatsapp", methods=["GET"])
 def whatsapp_verify():
     """WhatsApp webhook verification (hub challenge)."""
@@ -52,6 +67,14 @@ def whatsapp_webhook():
         # (Newsletter-Opt-out). Fire-and-forget im Thread: weder langsamer noch
         # blockierend; die Antwort an Meta (HTTP 200) bleibt unveraendert.
         threading.Thread(target=_forward_to_dptools, args=(payload,), daemon=True).start()
+
+        # Newsletter-Template-Antworten ("Ja"/"Nein", type=="button") gehen NUR
+        # an dp-tools (Opt-out) — der Bot ignoriert sie sofort und kehrt sauber
+        # mit 200 zurueck, OHNE Chat-Logik und OHNE "tippt...". Sonst bliebe das
+        # Kunden-Handy im Endlos-Typing haengen und Meta wuerde retrien.
+        # Eigene interaktive Bot-Buttons (type=="interactive") sind NICHT betroffen.
+        if _is_template_button_reply(payload):
+            return jsonify(ok=True), 200
 
         # Gepufferte Sends nachliefern (nach Meta-Stoerung)
         from dp_connect_bot.services.send_queue import flush, pending_count
