@@ -377,6 +377,10 @@ Menge ÄNDERN ("mach lieber 30 draus", "nur noch 10", "doch 50 statt 20"):
 ```
 WICHTIG: Für Mengenänderungen IMMER set_qty nutzen, NIEMALS nochmal "add" —
 add ADDIERT zur bestehenden Menge dazu (20 im Korb + add 30 = 50, falsch!).
+WENN MEHRDEUTIG: Liegen MEHRERE Produkte im Warenkorb und der Kunde sagt nur "mach 30
+draus" / "nur noch 10", OHNE klar zu sagen WELCHES → NICHT raten, sondern kurz
+nachfragen ("Welches soll ich auf 30 ändern — die Cherry oder die Peach?"). Nur wenn
+eindeutig EIN Produkt im Korb ist ODER der Kunde es klar benennt → direkt set_qty.
 
 Warenkorb komplett leeren:
 ```cart_action

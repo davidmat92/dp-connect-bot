@@ -151,8 +151,14 @@ def process_cart_actions(session, ai_response):
 
             elif action == "remove":
                 pid = str(data["product_id"])
-                session["cart"] = [i for i in session["cart"] if str(i["product_id"]) != pid]
-                wc_actions.append(WcAction(action="remove", product_id=pid))
+                removed = next((i for i in session["cart"] if str(i["product_id"]) == pid), None)
+                if removed:
+                    session["cart"] = [i for i in session["cart"] if str(i["product_id"]) != pid]
+                    wc_actions.append(WcAction(action="remove", product_id=pid))
+                else:
+                    # Produkt war gar nicht im Korb → ehrlich melden statt still
+                    # "entfernt" zu suggerieren (der Kunde denkt sonst, es sei weg).
+                    clean += "\n\n⚠️ Dieses Produkt war nicht im Warenkorb – da gab's nichts zu entfernen."
 
             elif action == "set_qty":
                 # Neue GESAMT-Menge fuer eine bestehende Position ("mach 30 draus")
@@ -262,6 +268,13 @@ def process_cart_actions(session, ai_response):
     if has_callback_request:
         keyboards.append(Keyboard(type=KeyboardType.CALLBACK))
         track_event("callback_offered", session.get("chat_id", ""), session.get("channel", ""))
+
+    # Hat die KI den Warenkorb veraendert (add/remove/set_qty/clear → wc_actions)?
+    # Dann ist eine evtl. offene Mengen-Abfrage (pending_selection) hinfaellig —
+    # sonst koennte eine spaeter lose getippte Zahl faelschlich dem alten
+    # Pending-Produkt zugeordnet werden statt dem gerade besprochenen.
+    if wc_actions:
+        session["pending_selection"] = None
 
     return clean, keyboards, wc_actions
 

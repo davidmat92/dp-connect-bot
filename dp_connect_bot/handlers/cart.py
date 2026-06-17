@@ -4,7 +4,7 @@ Cart handlers – checkout, cart display, reorder, pending quantity.
 
 from dp_connect_bot.config import CHECKOUT_WORDS, CART_DISPLAY_WORDS, REORDER_TRIGGERS, CATEGORY_MAP, BROWSE_TRIGGERS, log
 from dp_connect_bot.models.response import BotResponse, Keyboard, KeyboardType, Button
-from dp_connect_bot.services.cart_processing import format_cart, generate_checkout_url
+from dp_connect_bot.services.cart_processing import format_cart, generate_checkout_url, _apply_staffel_price
 from dp_connect_bot.services.product_cache import cache
 from dp_connect_bot.services.history import track_event
 from dp_connect_bot.utils.formatting import format_price_de, parse_price, get_variant_display_name
@@ -81,7 +81,11 @@ def refresh_reorder_items(last_order):
             continue
         item = dict(i)
         if prod.get("price"):
-            item["price"] = str(prod.get("price"))  # Live-Preis statt gespeichertem
+            item["price"] = str(prod.get("price"))  # Live-Basispreis statt gespeichertem
+        # ...und Staffelpreis fuer die nachzubestellende Menge (sonst zeigt die
+        # Nachbestellung den Normalpreis, waehrend der Checkout den Staffelpreis
+        # berechnet → Anzeige ≠ berechnet).
+        _apply_staffel_price(item, prod)
         valid.append(item)
     return valid, dropped
 
