@@ -127,8 +127,14 @@ def is_verified(session) -> bool:
 
 
 def mark_verified(session, customer: dict, chat_id: str = None):
+    cid = customer.get("id")
+    if not cid:
+        # Ohne customer_id ist die Verifizierung fuer den Checkout unbrauchbar
+        # (chat_order braucht die ID). Sichtbar machen statt still kaputt gehen.
+        log.warning(f"mark_verified OHNE customer_id (chat_id={chat_id}, customer={customer}) "
+                    f"— Preise sichtbar, aber Chat-Bestellung wird scheitern")
     session["verified"] = {
-        "customer_id": customer.get("id"),
+        "customer_id": cid,
         "name": customer.get("name", ""),
         "firma": customer.get("firma", ""),
         "email": customer.get("email", ""),
@@ -140,7 +146,7 @@ def mark_verified(session, customer: dict, chat_id: str = None):
         _store_verification(chat_id, session["verified"])
 
 
-_PRICE_RE = re.compile(r"\d{1,5}[.,]\d{2}\s*€")
+_PRICE_RE = re.compile(r"\d{1,5}[.,]\d{2}\s*(?:€|EUR\b|Euro\b)", re.IGNORECASE)
 _SONDER_RE = re.compile(r"\|?\s*Sonderpreis[^\n|]*", re.IGNORECASE)
 
 

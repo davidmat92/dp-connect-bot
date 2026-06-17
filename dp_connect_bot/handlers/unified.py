@@ -101,6 +101,18 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
         if not session.get("verified") and session.get("mode") in (None, "order", "choosing"):
             code_match = verif.CODE_RE.match(text)
             if session.get("verify_pending_email") and code_match:
+                # Lokales Rate-Limit gegen Code-Brute-Force (zusaetzlich zum
+                # dp-tools-Limit pro Code): max 8 Eingaben / 10 Min / Session.
+                import time as _vt
+                _now = _vt.time()
+                _att = [t for t in session.get("verify_code_attempts", []) if _now - t < 600]
+                if len(_att) >= 8:
+                    session["verify_code_attempts"] = _att
+                    session.pop("verify_pending_email", None)
+                    session_manager.save(chat_id, session)
+                    return BotResponse(text="Zu viele Code-Versuche. ⏳ Bitte fordere gleich einen neuen Code an — schick mir dafür nochmal deine E-Mail-Adresse.")
+                _att.append(_now)
+                session["verify_code_attempts"] = _att
                 res = verif.check_code(session["verify_pending_email"], code_match.group(1))
                 if res.get("valid"):
                     verif.mark_verified(session, res["customer"], chat_id=chat_id)
@@ -124,6 +136,19 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
             email_match = verif.EMAIL_RE.search(text)
             if email_match and len(text.strip()) < 60:
                 email = email_match.group(0).lower()
+                # Rate-Limit gegen Missbrauch: ohne Bremse koennte der Bot
+                # benutzt werden, um fremden Kunden Verifizierungs-Mails zuzuspammen
+                # ODER zu testen, welche E-Mails Kunden sind (Enumeration via
+                # "Code geschickt" vs "kein Konto"). Max 5 Anfragen / 10 Min / Session.
+                import time as _vt
+                _now = _vt.time()
+                _reqs = [t for t in session.get("verify_code_requests", []) if _now - t < 600]
+                if len(_reqs) >= 5:
+                    session["verify_code_requests"] = _reqs
+                    session_manager.save(chat_id, session)
+                    return BotResponse(text="Du hast gerade zu viele Verifizierungs-Codes angefordert. ⏳ Bitte warte ein paar Minuten und versuch es dann nochmal.")
+                _reqs.append(_now)
+                session["verify_code_requests"] = _reqs
                 res = verif.send_code(email)
                 session_manager.save(chat_id, session)
                 if res.get("sent"):
