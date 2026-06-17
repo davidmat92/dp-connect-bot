@@ -612,6 +612,10 @@ class ProductCache:
 
         query_lower = query.lower().strip()
         query_parts = query_lower.split()
+        if not query_parts:
+            # Leere Query → sonst ist all([]) == True und JEDES Produkt "matcht"
+            # (Bestseller-Dump). Aufrufer filtern das meist schon, hier zur Sicherheit.
+            return []
         scored = []
         for p in products:
             searchable = self._searchable(p)
