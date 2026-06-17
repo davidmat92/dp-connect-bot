@@ -106,3 +106,28 @@ def notify_api_outage(detail):
         url="https://console.anthropic.com/settings/billing",
         url_title="Anthropic Guthaben aufladen",
     )
+
+
+_VOICE_OUTAGE_THROTTLE_FILE = os.path.join(_BASE_DIR, ".voice_outage_alert.ts")
+
+
+def notify_voice_outage(detail):
+    """Alarm an Davide, wenn die Whisper-Transkription hart ausfaellt (OpenAI-Key/
+    Guthaben). Eigene Drosselung (max. 1 Push / 30 Min). Der Bot laeuft sonst
+    normal weiter — nur Sprachnachrichten werden nicht transkribiert."""
+    try:
+        if os.path.exists(_VOICE_OUTAGE_THROTTLE_FILE):
+            if (time.time() - os.path.getmtime(_VOICE_OUTAGE_THROTTLE_FILE)) < _OUTAGE_THROTTLE_S:
+                return
+        with open(_VOICE_OUTAGE_THROTTLE_FILE, "w") as fh:
+            fh.write(str(time.time()))
+    except Exception as e:
+        log.error(f"[pushover] voice-outage-throttle: {e}")
+
+    send_pushover(
+        title="🎤 DP Bot: Voice-Ausfall",
+        message=detail + "\n\nText-Chat laeuft normal weiter.",
+        priority=1,
+        url="https://platform.openai.com/usage",
+        url_title="OpenAI-Guthaben pruefen",
+    )

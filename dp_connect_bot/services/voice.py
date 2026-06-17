@@ -29,6 +29,50 @@ def _whisper_vocab_prompt():
     return "Bestellung im Vape-Großhandel. Produktnamen: " + ", ".join(vocab) + "."
 
 
+# Bekannte Whisper-Halluzinationen bei Stille/Rauschen (Untertitel-/YouTube-
+# Artefakte). Whisper-1 "erfindet" die gern bei leeren Audios → sonst wuerde ein
+# versehentliches/leeres Voice als Phantom-"Bestellung" verarbeitet.
+_WHISPER_NOISE = {
+    "vielen dank", "vielen dank fürs zuschauen", "vielen dank fürs zugucken",
+    "danke fürs zuschauen", "danke fürs zugucken", "bis zum nächsten mal",
+    "bis zum nächsten video", "das war's für heute", "wir sehen uns",
+    "auf wiedersehen", "tschüss", "ciao", "amara.org",
+    "untertitel der amara.org-community", "untertitelung aufgrund der amara.org-community",
+    "untertitel im auftrag des zdf", "untertitelung des zdf, 2020",
+}
+
+
+def _looks_like_no_speech(text):
+    """True, wenn die Transkription keine echte Sprache enthaelt (leer, nur
+    Symbole, oder eine bekannte Whisper-Halluzination)."""
+    if not text:
+        return True
+    t = text.strip().lower().strip("!.?…\"' ").strip()
+    if not t:
+        return True
+    if all(not ch.isalnum() for ch in t):  # nur Symbole/Musiknoten
+        return True
+    if t in _WHISPER_NOISE:
+        return True
+    if "untertitel" in t and len(t) < 60:
+        return True
+    if "amara.org" in t:
+        return True
+    return False
+
+
+def _alert_if_outage(resp):
+    """Bei Whisper-Auth-/Guthaben-Fehler (401/429/quota) einmalig Davide alarmieren
+    — sonst faellt Voice still aus (jede Sprachnachricht 'nicht verstanden')."""
+    try:
+        body = (resp.text or "").lower()
+        if resp.status_code in (401, 402, 429) or "insufficient_quota" in body or "exceeded your current quota" in body:
+            from dp_connect_bot.services.pushover import notify_voice_outage
+            notify_voice_outage(f"OpenAI/Whisper antwortet mit HTTP {resp.status_code} — Sprachnachrichten werden gerade nicht transkribiert (Key/Guthaben pruefen).")
+    except Exception:
+        pass
+
+
 def transcribe_telegram_voice(file_id):
     """Transkribiert eine Telegram Voice Message via OpenAI Whisper API."""
     if not OPENAI_API_KEY:
@@ -58,10 +102,15 @@ def transcribe_telegram_voice(file_id):
                 data={"model": "whisper-1", "language": "de", "prompt": _whisper_vocab_prompt()},
                 timeout=30,
             )
-            whisper_resp.raise_for_status()
+            if not whisper_resp.ok:
+                _alert_if_outage(whisper_resp)
+                whisper_resp.raise_for_status()
             text = whisper_resp.json().get("text", "").strip()
 
         os.unlink(tmp_path)
+        if _looks_like_no_speech(text):
+            log.info(f"Voice (Telegram) als No-Speech/Halluzination verworfen: '{text}'")
+            return None
         log.info(f"Voice transcribed: '{text}'")
         return text
 
@@ -125,12 +174,16 @@ def transcribe_whatsapp_voice(media_id):
             )
             if not whisper_resp.ok:
                 log.error(f"Voice: Whisper API error {whisper_resp.status_code}: {whisper_resp.text[:300]}")
+                _alert_if_outage(whisper_resp)
                 whisper_resp.raise_for_status()
             text = whisper_resp.json().get("text", "").strip()
 
         os.unlink(tmp_path)
+        if _looks_like_no_speech(text):
+            log.info(f"Voice (WhatsApp) als No-Speech/Halluzination verworfen: '{text}'")
+            return None
         log.info(f"Voice transcribed: '{text}'")
-        return text if text else None
+        return text
 
     except Exception as e:
         log.error(f"WhatsApp voice transcription error: {type(e).__name__}: {e}", exc_info=True)
