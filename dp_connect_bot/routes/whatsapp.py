@@ -28,52 +28,51 @@ def _forward_to_dptools(payload):
 
 
 _NL_OPTIN_MSG = (
-    "Super, du bist dabei! 🎉 Du bekommst ab jetzt unsere Infos zu Angeboten & "
-    "Neuheiten. Und klar — du kannst mir hier jederzeit ganz normal schreiben, "
-    "wenn du etwas bestellen oder fragen willst. 🛒"
+    "Top, du bist dabei! 📬 Du bekommst ab jetzt unsere besten Infos & Angebote. "
+    "Was kann ich sonst für dich tun?"
 )
 _NL_OPTOUT_MSG = (
-    "Alles klar, du bekommst von uns keine Newsletter mehr. 👍 Wenn du es dir "
-    "anders überlegst, schreib einfach *Newsletter* — dann bist du wieder dabei.\n\n"
-    "Und du kannst mich hier natürlich trotzdem jederzeit normal nutzen: sag mir "
-    "einfach, was du brauchst! 🛒"
+    "Erledigt – ich hab dich von unseren WhatsApp-Infos abgemeldet. 👋 "
+    "Melde dich jederzeit mit *Newsletter* wieder an."
 )
 
+# Text-Keywords werden NUR exakt (getrimmt, lowercase) gematcht, damit normale
+# Nachrichten wie "wann kommt euer newsletter?" NICHT faelschlich ausloesen.
+_NL_OPTIN_KEYWORDS = ("newsletter", "anmelden", "abonnieren")
+_NL_OPTOUT_KEYWORDS = ("abmelden", "stop", "abbestellen")
 
-def _handle_template_button_replies(payload):
-    """Antwortet auf Newsletter-Template-Quick-Replies ('Ja'/'Nein', die als
-    Nachrichtentyp 'button' kommen — im Gegensatz zu den EIGENEN Bot-Buttons, die
-    als 'interactive'/button_reply kommen). Schickt eine kurze Bestaetigung und
-    laesst die normale Chat-/Bestell-Logik aus.
 
-    Returns True, wenn mindestens eine solche Template-Antwort dabei war (dann
-    ignoriert der Webhook den Rest und kehrt mit 200 zurueck).
+def _newsletter_intent(payload):
+    """Erkennt Newsletter-Interaktionen. Returns (intent, from, msg_id) mit
+    intent 'in' | 'out' | None.
+
+    - Template-Quick-Reply 'Ja'/'Nein' kommen als type=='button' (im Gegensatz zu
+      den EIGENEN Bot-Buttons = type=='interactive', die NICHT betroffen sind).
+    - Text NUR bei EXAKTEN Keywords (kein Substring auf Freitext!).
     """
-    from dp_connect_bot.services.wa_dedup import seen_before
-    found = False
     try:
         for e in payload.get("entry", []):
             for c in e.get("changes", []):
                 for m in c.get("value", {}).get("messages", []):
-                    if m.get("type") != "button":
-                        continue
-                    found = True
-                    phone = m.get("from")
-                    if not phone:
-                        continue
-                    # Meta-Retry derselben Antwort nicht doppelt bestaetigen
-                    if seen_before(m.get("id")):
-                        continue
-                    btn = m.get("button") or {}
-                    label = str(btn.get("payload") or btn.get("text") or "").strip().lower()
-                    if "nein" in label or "abmeld" in label or label in ("no",):
-                        adapter._send_message(phone, _NL_OPTOUT_MSG)
-                    elif "ja" in label or "anmeld" in label or label in ("yes",):
-                        adapter._send_message(phone, _NL_OPTIN_MSG)
-                    # unbekannte Buttons: still bleiben (nur weitergeleitet)
+                    frm = m.get("from")
+                    mid = m.get("id")
+                    t = m.get("type")
+                    if t == "button":
+                        btn = m.get("button") or {}
+                        txt = str(btn.get("text") or btn.get("payload") or "").strip().lower()
+                        if txt == "ja":
+                            return "in", frm, mid
+                        if txt == "nein":
+                            return "out", frm, mid
+                    elif t == "text":
+                        b = str((m.get("text") or {}).get("body") or "").strip().lower()
+                        if b in _NL_OPTIN_KEYWORDS:
+                            return "in", frm, mid
+                        if b in _NL_OPTOUT_KEYWORDS:
+                            return "out", frm, mid
     except Exception as ex:
-        log.error(f"Template-Button-Handling fehlgeschlagen: {ex}")
-    return found
+        log.error(f"Newsletter-Intent-Erkennung fehlgeschlagen: {ex}")
+    return None, None, None
 
 
 @whatsapp_bp.route("/whatsapp", methods=["GET"])
@@ -102,11 +101,16 @@ def whatsapp_webhook():
         # blockierend; die Antwort an Meta (HTTP 200) bleibt unveraendert.
         threading.Thread(target=_forward_to_dptools, args=(payload,), daemon=True).start()
 
-        # Newsletter-Template-Antworten ("Ja"/"Nein", type=="button") bekommen eine
-        # kurze Bestaetigung und KEINE normale Chat-/Bestell-Logik (sonst Endlos-
-        # "tippt..." + Meta-Retries). dp-tools hat den Webhook oben schon erhalten.
-        # Eigene interaktive Bot-Buttons (type=="interactive") sind NICHT betroffen.
-        if _handle_template_button_replies(payload):
+        # Newsletter-Interaktionen (Template-Buttons "Ja"/"Nein" + exakte Keywords
+        # wie "Newsletter"/"abmelden") nur kurz bestaetigen und KEINE Bestell-/Chat-
+        # Logik starten — sonst Endlos-"tippt..." + Meta-Retries. dp-tools hat den
+        # Webhook oben schon erhalten und setzt den Flag. Eigene interaktive Bot-
+        # Buttons (type=="interactive") sind NICHT betroffen.
+        intent, nl_phone, nl_mid = _newsletter_intent(payload)
+        if intent:
+            from dp_connect_bot.services.wa_dedup import seen_before
+            if nl_phone and not seen_before(nl_mid):  # Meta-Retry nicht doppelt bestaetigen
+                adapter._send_message(nl_phone, _NL_OPTIN_MSG if intent == "in" else _NL_OPTOUT_MSG)
             return jsonify(ok=True), 200
 
         # Gepufferte Sends nachliefern (nach Meta-Stoerung)
