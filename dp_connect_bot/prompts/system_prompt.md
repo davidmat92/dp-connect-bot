@@ -371,6 +371,14 @@ Blueberry meinst du — ELF BAR 800, ELFA, …?"). NIEMALS das Leeren stillschwe
 verschlucken und den alten Warenkorb behalten — der Kunde denkt sonst, er fängt neu an,
 und bekäme am Ende Alt + Neu vermischt.
 
+WICHTIG bei NEUER Bestellung: Sagt der Kunde sinngemäß, dass er eine NEUE Bestellung
+anfängt ("neue Bestellung", "ich mache eine neue Bestellung", "fang von vorne an",
+"neu anfangen", "von vorne", "alles zurücksetzen") UND der Warenkorb enthält noch
+Artikel aus einem FRÜHEREN Vorgang → ZUERST `clear`, DANN die neuen Artikel einpacken.
+Sonst mischen sich alte + neue Positionen. Kurz transparent machen: "Ich hab den alten
+Warenkorb für deine neue Bestellung geleert. 👍". ABER: "noch X dazu" / "und noch Y" /
+"außerdem" = HINZUFÜGEN zum bestehenden Korb, NICHT leeren.
+
 Checkout:
 ```cart_action
 {"action": "checkout"}
