@@ -1,6 +1,5 @@
 """WhatsApp webhook route blueprint."""
 
-import json
 import threading
 
 import requests
@@ -78,25 +77,6 @@ def _newsletter_intent(payload):
     return None, None, None
 
 
-def _debug_capture_buttons(payload):
-    """TEMP-Diagnose: erfasst die Struktur eingehender Button-/Interactive-
-    Nachrichten (OHNE Telefonnummer/Freitext) ueber track_event, damit die echte
-    Beschriftung der Template-Buttons sichtbar wird. Wieder entfernen."""
-    try:
-        from dp_connect_bot.services.history import track_event
-        for e in payload.get("entry", []):
-            for c in e.get("changes", []):
-                for m in c.get("value", {}).get("messages", []):
-                    t = m.get("type")
-                    if t in ("button", "interactive"):
-                        info = {"type": t, "button": m.get("button"),
-                                "interactive": m.get("interactive")}
-                        track_event("wa_btn_debug", "", "whatsapp",
-                                    json.dumps(info, ensure_ascii=False)[:400])
-    except Exception:
-        pass
-
-
 @whatsapp_bp.route("/whatsapp", methods=["GET"])
 def whatsapp_verify():
     """WhatsApp webhook verification (hub challenge)."""
@@ -122,8 +102,6 @@ def whatsapp_webhook():
         # (Newsletter-Opt-out). Fire-and-forget im Thread: weder langsamer noch
         # blockierend; die Antwort an Meta (HTTP 200) bleibt unveraendert.
         threading.Thread(target=_forward_to_dptools, args=(payload,), daemon=True).start()
-
-        _debug_capture_buttons(payload)  # TEMP-Diagnose: Button-Struktur erfassen
 
         # Newsletter-Interaktionen (Template-Buttons "Ja"/"Nein" + exakte Keywords
         # wie "Newsletter"/"abmelden") nur kurz bestaetigen und KEINE Bestell-/Chat-
