@@ -27,19 +27,53 @@ def _forward_to_dptools(payload):
         pass
 
 
-def _is_template_button_reply(p):
-    """True, wenn der Webhook eine Antwort auf einen Newsletter-Template-Quick-
-    Reply-Button enthaelt. Die kommen als Nachrichtentyp 'button' (im Gegensatz
-    zu den EIGENEN Bot-Buttons, die als 'interactive'/button_reply kommen)."""
+_NL_OPTIN_MSG = (
+    "Super, du bist dabei! 🎉 Du bekommst ab jetzt unsere Infos zu Angeboten & "
+    "Neuheiten. Und klar — du kannst mir hier jederzeit ganz normal schreiben, "
+    "wenn du etwas bestellen oder fragen willst. 🛒"
+)
+_NL_OPTOUT_MSG = (
+    "Alles klar, du bekommst von uns keine Newsletter mehr. 👍 Wenn du es dir "
+    "anders überlegst, schreib einfach *Newsletter* — dann bist du wieder dabei.\n\n"
+    "Und du kannst mich hier natürlich trotzdem jederzeit normal nutzen: sag mir "
+    "einfach, was du brauchst! 🛒"
+)
+
+
+def _handle_template_button_replies(payload):
+    """Antwortet auf Newsletter-Template-Quick-Replies ('Ja'/'Nein', die als
+    Nachrichtentyp 'button' kommen — im Gegensatz zu den EIGENEN Bot-Buttons, die
+    als 'interactive'/button_reply kommen). Schickt eine kurze Bestaetigung und
+    laesst die normale Chat-/Bestell-Logik aus.
+
+    Returns True, wenn mindestens eine solche Template-Antwort dabei war (dann
+    ignoriert der Webhook den Rest und kehrt mit 200 zurueck).
+    """
+    from dp_connect_bot.services.wa_dedup import seen_before
+    found = False
     try:
-        for e in p.get("entry", []):
+        for e in payload.get("entry", []):
             for c in e.get("changes", []):
                 for m in c.get("value", {}).get("messages", []):
-                    if m.get("type") == "button":
-                        return True
-    except Exception:
-        pass
-    return False
+                    if m.get("type") != "button":
+                        continue
+                    found = True
+                    phone = m.get("from")
+                    if not phone:
+                        continue
+                    # Meta-Retry derselben Antwort nicht doppelt bestaetigen
+                    if seen_before(m.get("id")):
+                        continue
+                    btn = m.get("button") or {}
+                    label = str(btn.get("payload") or btn.get("text") or "").strip().lower()
+                    if "nein" in label or "abmeld" in label or label in ("no",):
+                        adapter._send_message(phone, _NL_OPTOUT_MSG)
+                    elif "ja" in label or "anmeld" in label or label in ("yes",):
+                        adapter._send_message(phone, _NL_OPTIN_MSG)
+                    # unbekannte Buttons: still bleiben (nur weitergeleitet)
+    except Exception as ex:
+        log.error(f"Template-Button-Handling fehlgeschlagen: {ex}")
+    return found
 
 
 @whatsapp_bp.route("/whatsapp", methods=["GET"])
@@ -68,12 +102,11 @@ def whatsapp_webhook():
         # blockierend; die Antwort an Meta (HTTP 200) bleibt unveraendert.
         threading.Thread(target=_forward_to_dptools, args=(payload,), daemon=True).start()
 
-        # Newsletter-Template-Antworten ("Ja"/"Nein", type=="button") gehen NUR
-        # an dp-tools (Opt-out) — der Bot ignoriert sie sofort und kehrt sauber
-        # mit 200 zurueck, OHNE Chat-Logik und OHNE "tippt...". Sonst bliebe das
-        # Kunden-Handy im Endlos-Typing haengen und Meta wuerde retrien.
+        # Newsletter-Template-Antworten ("Ja"/"Nein", type=="button") bekommen eine
+        # kurze Bestaetigung und KEINE normale Chat-/Bestell-Logik (sonst Endlos-
+        # "tippt..." + Meta-Retries). dp-tools hat den Webhook oben schon erhalten.
         # Eigene interaktive Bot-Buttons (type=="interactive") sind NICHT betroffen.
-        if _is_template_button_reply(payload):
+        if _handle_template_button_replies(payload):
             return jsonify(ok=True), 200
 
         # Gepufferte Sends nachliefern (nach Meta-Stoerung)
