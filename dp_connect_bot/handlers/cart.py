@@ -164,11 +164,15 @@ def handle_browse(session, channel):
 
 def handle_pending_quantity(session, text):
     """Handle manual quantity input when pending_selection is set."""
-    pending = session["pending_selection"]
+    session.setdefault("cart", [])  # defensiv (beschaedigte Session)
+    pending = session.get("pending_selection") or {}
+    pid = pending.get("product_id")
+    if not pid:
+        session["pending_selection"] = None
+        return BotResponse(text="Sag mir einfach nochmal kurz, welches Produkt und welche Menge du brauchst! 😊")
     quantity = int(text)
     vpe_num = int(pending.get("vpe", 1))
-    pid = pending["product_id"]
-    name = pending["name"]
+    name = pending.get("name", "")
     brand = pending.get("brand", "")
     price = pending.get("price", "")
     label = f"{brand} - {name}".strip(" -")

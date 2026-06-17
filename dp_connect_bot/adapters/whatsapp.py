@@ -107,6 +107,40 @@ class WhatsAppAdapter(ChannelAdapter):
         except Exception:
             pass
 
+    @staticmethod
+    def _split_text(text, limit=4000):
+        """Teilt langen Text in Stuecke <= limit, moeglichst an Zeilengrenzen."""
+        if len(text) <= limit:
+            return [text]
+        chunks, rest = [], text
+        while len(rest) > limit:
+            cut = rest.rfind("\n", 0, limit)
+            if cut < limit // 2:
+                cut = limit
+            chunks.append(rest[:cut].rstrip())
+            rest = rest[cut:].lstrip()
+        if rest:
+            chunks.append(rest)
+        return chunks
+
+    def _post_text(self, phone, body):
+        """Sendet EINE reine Text-Nachricht (kein Keyboard)."""
+        headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}", "Content-Type": "application/json"}
+        payload = {"messaging_product": "whatsapp", "to": phone, "type": "text", "text": {"body": body[:4096]}}
+        try:
+            resp = requests.post(f"{WHATSAPP_API}/{WHATSAPP_PHONE_ID}/messages",
+                                 headers=headers, json=payload, timeout=10)
+            if not resp.ok:
+                log.error(f"WhatsApp text send error: {resp.text}")
+                self._maybe_enqueue(resp, payload)
+                return False
+            return True
+        except Exception as e:
+            log.error(f"WhatsApp text send exception: {e}")
+            from dp_connect_bot.services.send_queue import enqueue
+            enqueue(payload)
+            return False
+
     def _send_message(self, phone, text, buttons=None, list_menu=None):
         """Send a message via WhatsApp Cloud API."""
         if not WHATSAPP_TOKEN or not WHATSAPP_PHONE_ID:
@@ -114,6 +148,23 @@ class WhatsAppAdapter(ChannelAdapter):
             return False
 
         headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}", "Content-Type": "application/json"}
+
+        # Lange Nachrichten: WhatsApp KAPPT sonst (interactive-Body 1024 / Text 4096)
+        # statt zu splitten → Inhalt (Adresse, Checkout-Hinweis, Bestell-Link) ginge
+        # verloren. Daher splitten bzw. langen Teil als separate Text-Nachricht voran.
+        interactive = bool(list_menu or (buttons and len(buttons) <= 3))
+        if interactive and len(text) > 1024:
+            head, _sep, tail = text.rpartition("\n\n")
+            if not head or len(tail) > 1024:
+                head, tail = text, "👇"
+            for chunk in self._split_text(head):
+                self._post_text(phone, chunk)
+            text = (tail.strip() or "👇")[:1024]
+        elif not interactive and len(text) > 4096:
+            ok = True
+            for chunk in self._split_text(text):
+                ok = self._post_text(phone, chunk) and ok
+            return ok
 
         if list_menu:
             payload = {
