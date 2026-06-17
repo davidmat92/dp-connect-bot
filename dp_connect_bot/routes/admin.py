@@ -592,6 +592,10 @@ def admin_config():
             config["chat_checkout_enabled"] = bool(data["chat_checkout_enabled"])
         if "webchat_require_signed_auth" in data:
             config["webchat_require_signed_auth"] = bool(data["webchat_require_signed_auth"])
+        if "restock_wa_template" in data:
+            config["restock_wa_template"] = str(data["restock_wa_template"] or "")[:100]
+        if "restock_wa_lang" in data:
+            config["restock_wa_lang"] = str(data["restock_wa_lang"] or "de")[:10]
         # Per-channel overrides: {"channels": {"telegram": {"enabled": false, ...}}}
         if isinstance(data.get("channels"), dict):
             channels_cfg = config.setdefault("channels", {})

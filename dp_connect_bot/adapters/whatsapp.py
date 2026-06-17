@@ -194,6 +194,42 @@ class WhatsAppAdapter(ChannelAdapter):
             enqueue(payload)
             return False
 
+    def send_template(self, phone, template_name, body_params=None, lang="de"):
+        """Sendet eine genehmigte WhatsApp-Vorlage (fuer proaktive Nachrichten
+        AUSSERHALB des 24h-Fensters, z.B. Restock-Alarm). body_params = Liste der
+        {{1}},{{2}},…-Platzhalter-Werte im Template-Body."""
+        if not WHATSAPP_TOKEN or not WHATSAPP_PHONE_ID:
+            log.warning("WhatsApp nicht konfiguriert (Template)")
+            return False
+        components = []
+        if body_params:
+            components.append({
+                "type": "body",
+                "parameters": [{"type": "text", "text": str(p)} for p in body_params],
+            })
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": phone,
+            "type": "template",
+            "template": {
+                "name": template_name,
+                "language": {"code": lang},
+                "components": components,
+            },
+        }
+        try:
+            resp = requests.post(
+                f"{WHATSAPP_API}/{WHATSAPP_PHONE_ID}/messages",
+                headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}", "Content-Type": "application/json"},
+                json=payload, timeout=10,
+            )
+            if not resp.ok:
+                log.error(f"WhatsApp template send error: {resp.text}")
+            return resp.ok
+        except Exception as e:
+            log.error(f"WhatsApp template send exception: {e}")
+            return False
+
     @staticmethod
     def _maybe_enqueue(resp, payload):
         """API-/Auth-Fehler puffern (Meta-Stoerung) — Empfaenger-Fehler nicht."""

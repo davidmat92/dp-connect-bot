@@ -6,8 +6,9 @@ from flask import Flask, request
 
 from dp_connect_bot.config import ALLOWED_ORIGINS, SESSION_FILE, log
 from dp_connect_bot.models.session import session_manager
-from dp_connect_bot.services.product_cache import ensure_cache
+from dp_connect_bot.services.product_cache import ensure_cache, set_on_cache_loaded
 from dp_connect_bot.services.history import init_history_db
+from dp_connect_bot.services.restock_watch import check_and_notify
 
 
 def create_app():
@@ -36,6 +37,10 @@ def create_app():
     app.register_blueprint(webchat_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(health_bp)
+
+    # Wieder-da-Alarm: nach jedem Cache-Reload (~15 Min) Restock pruefen + Vormerker
+    # benachrichtigen. Laeuft im selben Hook, kein eigener Scheduler noetig.
+    set_on_cache_loaded(check_and_notify)
 
     # Startup tasks
     with app.app_context():

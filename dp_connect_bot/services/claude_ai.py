@@ -205,6 +205,23 @@ ORDER_TOOLS = [
             },
         },
     },
+    {
+        "name": "notify_when_back",
+        "description": (
+            "Merkt den Kunden vor, damit er automatisch benachrichtigt wird, sobald ein "
+            "AKTUELL NICHT LIEFERBARES Produkt wieder auf Lager ist ('Wieder-da-Alarm'). "
+            "Nutze es NUR, wenn der Kunde das moechte ('sag Bescheid wenn wieder da', "
+            "'benachrichtige mich') UND die Variante gerade ausverkauft ist. "
+            "product_id = ID der konkreten, nicht lieferbaren Variante."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "product_id": {"type": "string", "description": "ID der nicht lieferbaren Variante."}
+            },
+            "required": ["product_id"],
+        },
+    },
 ]
 
 
@@ -326,6 +343,30 @@ def _execute_order_tool(tool_name, tool_input, session=None):
                 "no_easybill": "Rechnungssystem gerade nicht erreichbar.",
             }
             return reasons.get(res.get("reason"), "Konnte die Rechnung gerade nicht abrufen.")
+
+        if tool_name == "notify_when_back":
+            pid = str(tool_input.get("product_id", "")).strip()
+            if not pid:
+                return "FEHLER: keine product_id."
+            ensure_cache()
+            prod = cache.get_product_by_id(pid)
+            if not prod:
+                return "Dieses Produkt finde ich gerade nicht — bitte nochmal die Variante suchen."
+            if cache.is_available(pid):
+                return f"Gute Nachricht: {prod.get('title','Das Produkt')} ist AKTUELL vorrätig — kann direkt eingepackt werden, keine Vormerkung nötig."
+            channel = (session or {}).get("channel", "")
+            chat_id = (session or {}).get("chat_id", "")
+            recipient = chat_id.split("_", 1)[1] if "_" in chat_id else chat_id
+            if channel == "web" or not recipient:
+                return ("Über den Webchat kann ich dich später leider nicht automatisch benachrichtigen "
+                        "(dafür müsstest du die Seite offen lassen). Schau gern bald wieder vorbei — oder "
+                        "schreib uns über WhatsApp/Telegram, dann merke ich dich vor!")
+            from dp_connect_bot.services.restock_watch import add_watch
+            name = (session or {}).get("customer_name", "")
+            if add_watch(pid, channel, recipient, name):
+                return (f"Vorgemerkt! ✅ Sobald {prod.get('title','das Produkt')} wieder lieferbar ist, "
+                        "melde ich mich automatisch bei dir.")
+            return "Hmm, das Vormerken hat gerade nicht geklappt — versuch's bitte gleich nochmal."
 
         if tool_name == "search_products":
             query = str(tool_input.get("query", "")).strip()

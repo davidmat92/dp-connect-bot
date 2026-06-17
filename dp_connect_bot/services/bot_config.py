@@ -44,6 +44,10 @@ DEFAULTS = {
     # B2B-Kunde anerkennen. Default AUS fuer stufenweise Einfuehrung (erst Logs
     # pruefen, dass eingeloggte Kunden korrekt signieren, DANN scharfschalten).
     "webchat_require_signed_auth": False,
+    # Wieder-da-Alarm: Name der genehmigten WhatsApp-Vorlage fuer Restock-
+    # Benachrichtigungen (leer = WhatsApp-Versand pausiert, Telegram laeuft immer).
+    "restock_wa_template": "",
+    "restock_wa_lang": "de",
     "channels": {},
 }
 
