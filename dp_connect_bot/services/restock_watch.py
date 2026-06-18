@@ -94,10 +94,17 @@ def _dispatch(channel, recipient, product_name) -> bool:
         lang = (cfg.get("restock_wa_lang") or "de").strip()
         try:
             from dp_connect_bot.adapters.whatsapp import WhatsAppAdapter
-            WhatsAppAdapter().send_template(recipient, tmpl, [product_name], lang=lang)
+            ok = WhatsAppAdapter().send_template(recipient, tmpl, [product_name], lang=lang)
         except Exception as e:
             log.error(f"restock whatsapp template send: {e}")
-        return True
+            ok = False
+        if not ok:
+            # Fehlgeschlagen (z.B. Template-Name/Sprache/Parameter passen nicht) →
+            # Vormerkung HALTEN statt still loeschen, sonst verliert ein Konfig-Fehler
+            # die Vormerker unwiederbringlich. Naechster Cache-Zyklus versucht es erneut.
+            log.warning(f"restock WhatsApp Template-Send fehlgeschlagen → Vormerkung GEHALTEN "
+                        f"(Template '{tmpl}', lang '{lang}', {product_name} → {recipient})")
+        return bool(ok)
 
     # andere Kanaele (web) koennen nicht proaktiv benachrichtigt werden
     return True
