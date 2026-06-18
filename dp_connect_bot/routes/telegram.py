@@ -123,16 +123,24 @@ def telegram_webhook():
         # --- Callback from inline keyboard ---
         callback = update.get("callback_query")
         if callback:
-            chat_id = callback["message"]["chat"]["id"]
-            data = callback.get("data", "")
-            callback_id = callback["id"]
-            user_info = callback.get("from", {})
-            log.info(f"[TG:{chat_id}] Callback: {data}")
-
-            prefixed = adapter.prefixed_chat_id(chat_id)
-            response = unified_handle_callback(prefixed, data, channel="telegram")
-            adapter.send_response(chat_id, response)
-            adapter.answer_callback(callback_id, response.answer_callback_text)
+            callback_id = callback.get("id")
+            cb_text = ""
+            try:
+                chat_id = (callback.get("message") or {}).get("chat", {}).get("id")
+                data = callback.get("data", "")
+                if chat_id is not None:
+                    log.info(f"[TG:{chat_id}] Callback: {data}")
+                    prefixed = adapter.prefixed_chat_id(chat_id)
+                    response = unified_handle_callback(prefixed, data, channel="telegram")
+                    adapter.send_response(chat_id, response)
+                    cb_text = response.answer_callback_text or ""
+            except Exception as e:
+                log.error(f"Telegram callback handling error: {e}", exc_info=True)
+            finally:
+                # Den Lade-Spinner am Button IMMER stoppen — auch wenn die
+                # Verarbeitung oben crasht, sonst dreht er beim Kunden ewig weiter.
+                if callback_id:
+                    adapter.answer_callback(callback_id, cb_text)
 
         return jsonify(ok=True), 200
     except Exception as e:

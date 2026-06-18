@@ -112,13 +112,23 @@ class SessionManager:
             session["conversation"] = conv[-60:]
         now = session.get("last_activity", datetime.now().isoformat())
         created = session.get("created_at", now)
+        # Defensiv serialisieren: kommt je ein nicht-JSON-Wert in die Session
+        # (z.B. ein datetime durch einen kuenftigen Bug), wuerde json.dumps sonst
+        # bei JEDEM Save dieser Session werfen → die Session liesse sich NIE mehr
+        # speichern (Warenkorb/Verifizierung gehen verloren). `default=str` macht
+        # unbekannte Typen serialisierbar statt die ganze Persistenz zu sprengen.
+        try:
+            blob = json.dumps(session, ensure_ascii=False)
+        except (TypeError, ValueError) as e:
+            log.error(f"Session {chat_id}: nicht serialisierbar ({e}) — Fallback default=str")
+            blob = json.dumps(session, ensure_ascii=False, default=str)
         conn.execute(
             """INSERT INTO sessions (chat_id, data, last_activity, created_at)
                VALUES (?, ?, ?, ?)
                ON CONFLICT(chat_id) DO UPDATE SET
                    data = excluded.data,
                    last_activity = excluded.last_activity""",
-            (chat_id, json.dumps(session, ensure_ascii=False), now, created),
+            (chat_id, blob, now, created),
         )
         conn.commit()
 
