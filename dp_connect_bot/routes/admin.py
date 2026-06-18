@@ -552,7 +552,7 @@ def admin_photo_test():
         return jsonify(ok=False, error="Unauthorized"), 401
     try:
         import requests as _requests
-        from dp_connect_bot.services.photo_vision import describe_photo, build_photo_message
+        from dp_connect_bot.services.photo_vision import describe_photo, build_photo_message, _is_shelf_request
         data = request.get_json() or {}
         url = data.get("image_url", "")
         caption = data.get("caption", "")
@@ -560,7 +560,13 @@ def admin_photo_test():
         resp.raise_for_status()
         mime = resp.headers.get("Content-Type", "image/jpeg").split(";")[0]
         desc = describe_photo(resp.content, mime, caption)
-        return jsonify(ok=True, description=desc, message=build_photo_message(desc, caption))
+        saved = False
+        # Optional: Regal-Scan unter einer chat_id ablegen (Foto-Inventur testen)
+        cid = data.get("chat_id", "")
+        if cid and desc and _is_shelf_request(caption):
+            from dp_connect_bot.services.shelf_inventory import save_scan
+            saved = save_scan(cid, desc)
+        return jsonify(ok=True, description=desc, message=build_photo_message(desc, caption), scan_saved=saved)
     except Exception as e:
         log.error(f"[admin_photo_test] Error: {e}")
         return jsonify(ok=False, error=str(e)[:200]), 500

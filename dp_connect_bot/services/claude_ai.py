@@ -265,6 +265,17 @@ ORDER_TOOLS = [
         ),
         "input_schema": {"type": "object", "properties": {}},
     },
+    {
+        "name": "shelf_inventory",
+        "description": (
+            "Zeigt das ZULETZT vom Kunden geschickte Regal-Foto: welche Produkte LEER "
+            "oder KNAPP waren und vor wie vielen Tagen. Nutze es bei 'was muss ich "
+            "auffuellen', 'was geht mir aus', 'nachbestellen' — auch OHNE neues Foto — "
+            "um an die leeren/knappen Faecher des letzten Regal-Scans zu erinnern. "
+            "Kein Input noetig."
+        ),
+        "input_schema": {"type": "object", "properties": {}},
+    },
 ]
 
 
@@ -412,6 +423,24 @@ def _execute_order_tool(tool_name, tool_input, session=None):
                 "no_easybill": "Rechnungssystem gerade nicht erreichbar.",
             }
             return reasons.get(res.get("reason"), "Konnte die Rechnung gerade nicht abrufen.")
+
+        if tool_name == "shelf_inventory":
+            # Eigene Scan-Daten des Kunden (per chat_id) — keine Verifizierung noetig.
+            from dp_connect_bot.services.shelf_inventory import summary
+            s = summary((session or {}).get("chat_id", ""))
+            if not s:
+                return ("Kein gespeichertes Regal-Foto vorhanden. Der Kunde kann eins schicken "
+                        "(Foto vom Regal mit z.B. 'nachbestellen' dazu), dann merke ich mir den Bestand.")
+            parts = [f"LETZTER REGAL-SCAN (vor {s['age_days']} Tagen, {s['total']} Produkte erfasst):"]
+            if s.get("empty"):
+                parts.append("LEER: " + ", ".join(s["empty"][:15]))
+            if s.get("low"):
+                parts.append("KNAPP: " + ", ".join(s["low"][:15]))
+            if not s.get("empty") and not s.get("low"):
+                parts.append("Alles war ausreichend gefuellt.")
+            parts.append("→ Erinnere den Kunden in SEINER Sprache an die leeren/knappen Faecher und "
+                         "biete an, sie nachzubestellen. Hinweis, dass das Foto evtl. nicht mehr aktuell ist.")
+            return "\n".join(parts)
 
         if tool_name == "notify_when_back":
             pid = str(tool_input.get("product_id", "")).strip()

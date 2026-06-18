@@ -45,11 +45,14 @@ def telegram_webhook():
             if not image_bytes:
                 adapter._send_message(chat_id, "Das Foto konnte ich gerade nicht laden. 😅 Probier's nochmal oder beschreib mir das Produkt!")
                 return jsonify(ok=True), 200
-            from dp_connect_bot.services.photo_vision import describe_photo, build_photo_message
+            from dp_connect_bot.services.photo_vision import describe_photo, build_photo_message, _is_shelf_request
             desc = describe_photo(image_bytes, caption=caption)
             if not desc:
                 adapter._send_message(chat_id, "Das Foto konnte ich nicht auswerten. 😅 Beschreib mir das Produkt einfach kurz!")
                 return jsonify(ok=True), 200
+            if _is_shelf_request(caption):  # Regal-Scan → Foto-Inventur speichern
+                from dp_connect_bot.services.shelf_inventory import save_scan
+                save_scan(adapter.prefixed_chat_id(chat_id), desc)
             text = build_photo_message(desc, caption)
             prefixed = adapter.prefixed_chat_id(chat_id)
             response = unified_handle_message(prefixed, text, user_info, channel="telegram")
