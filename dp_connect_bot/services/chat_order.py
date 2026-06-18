@@ -43,19 +43,22 @@ def create_order(customer_id, cart, payment_method: str, channel: str) -> dict:
     — der Kunde wuerde teurer berechnet als im Chat zugesagt.
     """
     from dp_connect_bot.services.product_cache import cache, staffel_price_for
+    from dp_connect_bot.utils.formatting import parse_price
 
     items = []
     for i in cart:
         pid = str(i.get("product_id", ""))
-        qty = int(i.get("quantity", 1))
+        try:
+            qty = int(float(i.get("quantity", 1)))
+        except (ValueError, TypeError):
+            qty = 1
         product = cache.get_product_by_id(pid)
-        # Stueckpreis bestimmen: Staffelpreis (autoritativ) ODER der gezeigte Preis
+        # Stueckpreis bestimmen: Staffelpreis (autoritativ) ODER der gezeigte Preis.
+        # parse_price ist robust gegen deutsche Formate (€, Komma, Tausenderpunkt) —
+        # der naive replace(",",".") scheiterte z.B. an "1.234,56" oder "27,90€".
         unit = staffel_price_for(product, qty) if product else None
         if unit is None:
-            try:
-                unit = float(str(i.get("price", "")).replace(",", "."))
-            except (ValueError, TypeError):
-                unit = None
+            unit = parse_price(i.get("price", "")) or None
         if product and product.get("post_parent"):
             entry = {
                 "product_id": int(product["post_parent"]),

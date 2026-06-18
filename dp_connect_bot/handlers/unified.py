@@ -520,7 +520,15 @@ def unified_handle_callback(chat_id, callback_data, channel="telegram"):
         session_manager.save(chat_id, session)
 
         from dp_connect_bot.services.chat_order import create_order
-        res = create_order(verified["customer_id"], session["cart"], method, channel)
+        # create_order baut die Items VOR seinem try auf — wirft dort etwas (z.B.
+        # int() auf eine kaputte Menge), bliebe inflight sonst dauerhaft True und
+        # der Kunde koennte NIE wieder bestellen ("wird gerade angelegt"). Darum
+        # hart umschliessen: inflight wird IMMER zurueckgesetzt.
+        try:
+            res = create_order(verified["customer_id"], session["cart"], method, channel)
+        except Exception as e:
+            log.error(f"[chatorder] create_order raised: {e}", exc_info=True)
+            res = {"ok": False, "error": True}
         session["chat_order_inflight"] = False
         if res.get("ok"):
             session["last_order"] = [dict(i) for i in session["cart"]]
