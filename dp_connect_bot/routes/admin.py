@@ -22,6 +22,30 @@ def _require_admin():
     return key == ADMIN_API_KEY
 
 
+@admin_bp.route("/admin/wc-raw", methods=["GET"])
+def admin_wc_raw():
+    """TEMP-Diagnose: rohe WC-Admin-Produktdaten (stock + meta) fuer eine ID."""
+    if not _require_admin():
+        return jsonify(ok=False, error="Unauthorized"), 401
+    try:
+        from dp_connect_bot.services.woocommerce import wc_client
+        pid = request.args.get("id", "").strip()
+        p = wc_client._get(f"products/{pid}")
+        if not p:
+            return jsonify(ok=False, error="not found / WC error"), 404
+        meta = {m.get("key"): m.get("value") for m in p.get("meta_data", [])}
+        return jsonify(ok=True, fields={
+            "id": p.get("id"), "name": p.get("name"), "type": p.get("type"),
+            "stock_status": p.get("stock_status"), "stock_quantity": p.get("stock_quantity"),
+            "backorders": p.get("backorders"), "backorders_allowed": p.get("backorders_allowed"),
+            "backordered": p.get("backordered"), "purchasable": p.get("purchasable"),
+            "on_sale": p.get("on_sale"), "catalog_visibility": p.get("catalog_visibility"),
+        }, meta_keys=sorted(meta.keys()), meta=meta)
+    except Exception as e:
+        log.error(f"[admin_wc_raw] {e}")
+        return jsonify(ok=False, error=str(e)[:200]), 500
+
+
 @admin_bp.route("/admin/reload-cache", methods=["POST", "GET"])
 def admin_reload_cache():
     """Laedt den Produkt-Cache SYNCHRON aus WooCommerce neu (frische Preise/Lager)
