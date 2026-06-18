@@ -303,8 +303,15 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
             return BotResponse(text="🛒 Klar! Bestell-Modus ist aktiv. Was brauchst du?")
         session["conversation"].append({"role": "user", "content": text})
         session_manager.save(chat_id, session)
+        # Klar erkennbarer Ausstieg: ein Button (mode_order → human_mode=False) gilt
+        # auf ALLEN Kanaelen (auch Webchat) und ist eindeutig — anders als der exakte
+        # Stichwort-Abgleich, der einen Kunden sonst dauerhaft in der Weiterleitung
+        # festhaelt, ohne ein laufendes Mitarbeiter-Gespraech zu kapern.
         return BotResponse(
-            text="💬 Deine Nachricht wurde weitergeleitet. Ein Mitarbeiter antwortet dir gleich!\n\nWenn du bestellen möchtest, schreib einfach /start"
+            text=("💬 Deine Nachricht wurde weitergeleitet — ein Mitarbeiter meldet sich gleich!\n\n"
+                  "Wenn du in der Zwischenzeit selbst weiter bestellen willst, tippe unten auf "
+                  "*🛒 Bestellen* (oder schreib /start)."),
+            keyboards=[Keyboard(type=KeyboardType.MODE_CHOICE)],
         )
 
     lower_text = text.strip().lower()

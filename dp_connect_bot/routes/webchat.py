@@ -34,6 +34,25 @@ def _validate_webchat_auth(uid, email, auth) -> bool:
     return hmac.compare_digest(expected, sig)
 
 
+def _prepend_pending_admin(chat_id, result):
+    """Liefert Antworten aus, die Davide ueber /admin/reply an eine Webchat-Session
+    geschickt hat. Webchat hat keinen eigenen Poll → ohne das blieben die
+    Mitarbeiter-Antworten in `pending_admin_messages` liegen und der Kunde saehe sie
+    NIE. Wird beim naechsten Kunden-Kontakt der Bot-Antwort vorangestellt + geleert."""
+    try:
+        sess = session_manager.get(chat_id)
+        pending = sess.get("pending_admin_messages")
+        if pending:
+            sess["pending_admin_messages"] = []
+            session_manager.save(chat_id, sess)
+            block = "\n\n".join(f"👤 {m}" for m in pending)
+            existing = result.get("text") or ""
+            result["text"] = (block + ("\n\n" + existing if existing else "")).strip()
+    except Exception as e:
+        log.error(f"[webchat] pending-admin-delivery: {e}")
+    return result
+
+
 _init_hits = {}  # {ip: [timestamps]} — Flood-Schutz (pro Worker, reicht als Bremse)
 
 
@@ -144,6 +163,7 @@ def webchat_send():
         response = unified_handle_message(chat_id, text, channel="web", wc_cart=wc_cart)
         adapter = WebchatAdapter()
         result = adapter.build_json_response(response)
+        result = _prepend_pending_admin(chat_id, result)
         return jsonify(ok=True, **result)
     except Exception as e:
         log.error(f"[webchat_send] Error: {e}")
@@ -167,6 +187,7 @@ def webchat_action():
         response = unified_handle_callback(chat_id, callback, channel="web")
         adapter = WebchatAdapter()
         result = adapter.build_json_response(response)
+        result = _prepend_pending_admin(chat_id, result)
         return jsonify(ok=True, **result)
     except Exception as e:
         log.error(f"[webchat_action] Error: {e}")
