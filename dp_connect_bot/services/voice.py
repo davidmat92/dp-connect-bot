@@ -99,7 +99,10 @@ def transcribe_telegram_voice(file_id):
                 "https://api.openai.com/v1/audio/transcriptions",
                 headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
                 files={"file": (f"voice{suffix}", audio_file, f"audio/{suffix.strip('.')}")},
-                data={"model": "whisper-1", "language": "de", "prompt": _whisper_vocab_prompt()},
+                # KEIN festes language=de → Whisper erkennt die Sprache automatisch
+                # (Tuerkisch/Arabisch/Englisch …); der Marken-Vocab-Prompt haelt die
+                # Produktnamen sprachunabhaengig stabil.
+                data={"model": "whisper-1", "prompt": _whisper_vocab_prompt()},
                 timeout=30,
             )
             if not whisper_resp.ok:
@@ -169,7 +172,10 @@ def transcribe_whatsapp_voice(media_id):
                 "https://api.openai.com/v1/audio/transcriptions",
                 headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
                 files={"file": ("voice.ogg", audio_file, "audio/ogg")},
-                data={"model": "whisper-1", "language": "de", "prompt": _whisper_vocab_prompt()},
+                # KEIN festes language=de → Whisper erkennt die Sprache automatisch
+                # (Tuerkisch/Arabisch/Englisch …); der Marken-Vocab-Prompt haelt die
+                # Produktnamen sprachunabhaengig stabil.
+                data={"model": "whisper-1", "prompt": _whisper_vocab_prompt()},
                 timeout=30,
             )
             if not whisper_resp.ok:
