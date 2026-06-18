@@ -272,7 +272,7 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
     # statt im Callback-Handler. "chatorder_" fehlte → Chat-Bestellung per
     # Rechnung/Vorkasse loeste auf WhatsApp nichts aus.
     _CB_PREFIXES = ("mode_", "sel_", "qty_", "custom_", "cat_", "reorder_",
-                    "cb_", "login_", "done_", "chatorder_")
+                    "cb_", "login_", "done_", "chatorder_", "flavmore_")
     if stripped.startswith(_CB_PREFIXES) or stripped == "noop":
         resp = unified_handle_callback(chat_id, stripped, channel=channel)
         session_manager.save(chat_id, session)
@@ -501,6 +501,25 @@ def unified_handle_callback(chat_id, callback_data, channel="telegram"):
         return BotResponse(text=ch_cfg["disabled_message"])
 
     session = session_manager.get(chat_id, archive_callback=archive_session)
+
+    # "+N weitere Sorten"-Zeile in der WhatsApp-Liste angetippt → zum Tippen einladen
+    # (WhatsApp-Liste zeigt max 10, der Rest kommt per Name).
+    if callback_data.startswith("flavmore_"):
+        pid = callback_data.split("_", 1)[1]
+        product = cache.get_product_by_id(pid)
+        variations = cache.get_variations_available(pid)
+        session_manager.save(chat_id, session)
+        if not product or not variations:
+            return BotResponse(text="Sag mir einfach den Namen der Sorte, die du suchst — dann pack ich sie ein! 🙂",
+                               answer_callback_text="Sorte tippen")
+        pname = get_variant_display_name(product) or product.get("title", "das Produkt")
+        examples = ", ".join(get_variant_display_name(v) for v in variations[:3] if get_variant_display_name(v))
+        ex = f" (z.B. {examples})" if examples else ""
+        return BotResponse(
+            text=(f"Bei *{pname}* haben wir **{len(variations)} Sorten** — zu viele für die Liste! 😅\n\n"
+                  f"Tippe einfach den Namen deiner Sorte{ex} und die Menge, dann pack ich sie dir ein. 👍"),
+            answer_callback_text="Sorte tippen",
+        )
 
     if callback_data == "mode_order":
         session["mode"] = "order"

@@ -305,8 +305,12 @@ class WhatsAppAdapter(ChannelAdapter):
         if not variations:
             return None, 0
 
-        shown = variations[:10]
-        more = len(variations) - len(shown)
+        total = len(variations)
+        # Bei >10 Sorten passt nicht alles in die Meta-Liste (max 10 Zeilen). Statt
+        # 10 Sorten stumm abzuschneiden: 9 Sorten + eine SICHTBARE "weitere"-Zeile,
+        # damit der Kunde IM Listen-Dialog sieht, dass es mehr gibt + tippen kann.
+        shown = variations[:9] if total > 10 else variations[:10]
+        more = total - len(shown)
         rows = []
         for v in shown:
             name = get_variant_display_name(v)
@@ -324,9 +328,18 @@ class WhatsAppAdapter(ChannelAdapter):
                 "description": desc,
             })
 
+        # Sichtbare "weitere Sorten"-Zeile (statt stummer Abschnitt) → fuehrt zum
+        # Tippen, deckt ALLE restlichen Sorten ab.
+        if more > 0:
+            rows.append({
+                "id": f"flavmore_{parent_id}",
+                "title": f"➕ {more} weitere Sorten"[:24],
+                "description": "Hier tippen → dann Namen schreiben"[:72],
+            })
+        section_title = (f"{len(shown)} von {total} Sorten" if more > 0 else "Verfügbare Geschmäcker")
         return {
             "button_text": "Geschmack wählen",
-            "sections": [{"title": "Verfügbare Geschmäcker", "rows": rows}],
+            "sections": [{"title": section_title[:24], "rows": rows}],
         }, more
 
     def _build_quantity_list(self, kb):
