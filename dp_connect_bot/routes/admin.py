@@ -47,6 +47,24 @@ def admin_reload_cache():
     ), 200
 
 
+@admin_bp.route("/admin/reorder-reminders", methods=["POST", "GET"])
+def admin_reorder_reminders():
+    """Proaktive Nachbestell-Erinnerungen anstossen (fuer einen taeglichen
+    Scheduled-Task). `?dry_run=1` (oder JSON {"dry_run": true}) sendet NICHTS und
+    gibt nur die faelligen Kandidaten zurueck — zum gefahrlosen Pruefen. Echtes
+    Senden nur wenn `reorder_reminders_enabled` in der Bot-Config AN ist."""
+    if not _require_admin():
+        return jsonify(ok=False, error="Unauthorized"), 401
+    data = request.get_json(silent=True) or {}
+    dry = (request.args.get("dry_run") in ("1", "true", "yes")) or bool(data.get("dry_run"))
+    try:
+        from dp_connect_bot.services.reorder_reminders import check_and_remind
+        return jsonify(check_and_remind(dry_run=dry)), 200
+    except Exception as e:
+        log.error(f"[admin_reorder_reminders] {e}")
+        return jsonify(ok=False, error=str(e)[:200]), 500
+
+
 @admin_bp.route("/admin/sessions", methods=["GET"])
 def admin_sessions():
     if not _require_admin():
@@ -622,6 +640,12 @@ def admin_config():
             config["restock_wa_template"] = str(data["restock_wa_template"] or "")[:100]
         if "restock_wa_lang" in data:
             config["restock_wa_lang"] = str(data["restock_wa_lang"] or "de")[:10]
+        if "reorder_reminders_enabled" in data:
+            config["reorder_reminders_enabled"] = bool(data["reorder_reminders_enabled"])
+        if "reorder_wa_template" in data:
+            config["reorder_wa_template"] = str(data["reorder_wa_template"] or "")[:100]
+        if "reorder_wa_lang" in data:
+            config["reorder_wa_lang"] = str(data["reorder_wa_lang"] or "de")[:10]
         # Per-channel overrides: {"channels": {"telegram": {"enabled": false, ...}}}
         if isinstance(data.get("channels"), dict):
             channels_cfg = config.setdefault("channels", {})
