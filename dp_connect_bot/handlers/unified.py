@@ -35,6 +35,35 @@ from dp_connect_bot.handlers.mode import (
 )
 
 
+def _detect_lang(text):
+    """Grobe Sprach-Erkennung der Kundennachricht. Gibt 'de'|'tr'|'ar'|'ru'|'en'
+    oder None (zu kurz/unklar → bisherige Sprache behalten) zurueck. Bewusst leicht-
+    gewichtig — die KI spiegelt die Sprache eh; das hier steuert nur, ob hartcodierte
+    DEUTSCHE Hinweis-Anhaenge angehaengt werden (nicht in einen tuerkischen Chat)."""
+    if not text or len(text.strip()) < 3:
+        return None
+    if any('؀' <= c <= 'ۿ' for c in text):
+        return "ar"
+    if any('Ѐ' <= c <= 'ӿ' for c in text):
+        return "ru"
+    low = " " + text.lower() + " "
+    if any(c in low for c in "şğıİ") or any(w in low for w in (
+            " var ", " mı", " mi ", " merhaba", " selam", " fiyat", " lazım",
+            " istiyorum", " teşekkür", " kaç ", " adet")):
+        return "tr"
+    en = sum(1 for w in (" the ", " do you ", " have ", " hi ", " hello ", " price ",
+                         " need ", " want ", " please ", " in stock ", " how much ",
+                         " thanks ", " available ", " your ") if w in low)
+    de = sum(1 for w in (" habt ", " ihr ", " ich ", " brauche ", " hallo ", " servus ",
+                         " preis ", " haben ", " und ", " der ", " die ", " das ",
+                         " bestellen ", " moin ", " danke ", " noch ", " bitte ") if w in low)
+    if en >= 1 and en > de:
+        return "en"
+    if de >= 1:
+        return "de"
+    return None
+
+
 def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc_cart=None):
     """Single entry point for ALL text messages from ALL channels.
 
@@ -67,6 +96,13 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
 
     session = session_manager.get(chat_id, archive_callback=archive_session)
     session["channel"] = channel
+    # Sprache des Kunden grob erkennen (fuer sprach-sensible Hinweise). Bei kurzen/
+    # unklaren Nachrichten bleibt die bisherige Sprache erhalten. Die KI selbst
+    # spiegelt die Sprache ohnehin (Prompt-Regel) — das hier steuert nur die
+    # hartcodierten deutschen Hinweis-Anhaenge.
+    _l = _detect_lang(text)
+    if _l:
+        session["lang"] = _l
 
     # --- B2B-Verifizierung (Preise nur fuer registrierte Kunden) ---
     from dp_connect_bot.services import verification as verif
@@ -406,21 +442,30 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
     ai_response = call_claude(session, text, product_context, wc_cart=wc_cart)
     clean_text, keyboards, wc_actions = process_cart_actions(session, ai_response)
 
-    # Unverifizierte Telegram-Nutzer: Nummer-teilen-Button anbieten (einmalig)
+    # Hartcodierte deutsche Hinweis-Anhaenge NUR fuer deutschsprachige Chats —
+    # sonst klebt deutscher Text unter einer tuerkischen/arabischen Bot-Antwort.
+    # (Die Anleitung selbst ist deutsch, daher fuer Nicht-Deutsch weggelassen.)
+    _de = session.get("lang", "de") == "de"
+
+    # Unverifizierte Telegram-Nutzer: Nummer-teilen-Button anbieten (einmalig).
+    # Der Button bleibt sprachunabhaengig (wichtig fuer Verifizierung), nur der
+    # deutsche Tipp-Text entfaellt bei Nicht-Deutsch.
     if (channel == "telegram" and not verif.is_verified(session)
             and not session.get("contact_button_shown")):
         session["contact_button_shown"] = True
-        clean_text += "\n\n📱 Tipp: Teil einfach deine Nummer über den Button — geht am schnellsten!"
+        if _de:
+            clean_text += "\n\n📱 Tipp: Teil einfach deine Nummer über den Button — geht am schnellsten!"
         keyboards = list(keyboards) + [Keyboard(type=KeyboardType.CONTACT_REQUEST)]
 
     # Anleitung anbieten: beim Erstkontakt im Bestell-Modus fragen,
     # spaeter gelegentlich dezent erinnern
     if session.get("mode") == "order" and not session.get("anleitung_offered"):
         session["anleitung_offered"] = True
-        clean_text += ("\n\n👋 Schreibst du zum ersten Mal mit mir? "
-                       "Soll ich dir kurz zeigen, was ich alles kann? "
-                       "Schreib einfach *Anleitung* 📖")
-    elif session.get("mode") == "order" and session.get("message_count", 0) in (15, 45) \
+        if _de:
+            clean_text += ("\n\n👋 Schreibst du zum ersten Mal mit mir? "
+                           "Soll ich dir kurz zeigen, was ich alles kann? "
+                           "Schreib einfach *Anleitung* 📖")
+    elif _de and session.get("mode") == "order" and session.get("message_count", 0) in (15, 45) \
             and not session.get(f"anleitung_hint_{session.get('message_count', 0)}"):
         session[f"anleitung_hint_{session.get('message_count', 0)}"] = True
         clean_text += "\n\n💡 _Tipp: Mit dem Stichwort *Anleitung* zeig ich dir alle meine Funktionen._"
