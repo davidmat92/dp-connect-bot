@@ -143,7 +143,12 @@ def whatsapp_webhook():
                         log.info(f"[WA:{phone}] Duplikat-Webhook uebersprungen (msg {msg.get('id')})")
                         continue
 
-                    # Blaue Haken + "tippt..." sofort anzeigen
+                    # Typen, die der Bot NICHT verarbeitet (Sticker, Reaktion, Standort,
+                    # Kontakt, …) → still ueberspringen OHNE "tippt..." — sonst sieht der
+                    # Kunde "tippt..." und es kommt nie eine Antwort.
+                    if msg.get("type") not in ("text", "interactive", "audio", "image"):
+                        continue
+                    # Verarbeitbare Nachricht → blaue Haken + "tippt..." sofort anzeigen
                     adapter.mark_read_typing(msg.get("id"))
 
                     name = ""
@@ -192,7 +197,6 @@ def whatsapp_webhook():
                     # --- Foto ("habt ihr das hier?") ---
                     elif msg.get("type") == "image":
                         log.info(f"[WA:{phone}] Foto empfangen")
-                        adapter.mark_read_typing(msg.get("id"))
                         media_id = msg.get("image", {}).get("id")
                         caption = msg.get("image", {}).get("caption", "")
                         image_bytes, mime = _download_whatsapp_media(media_id)
@@ -214,8 +218,19 @@ def whatsapp_webhook():
 
                     log.info(f"[WA:{phone}] Message: {text}")
                     prefixed = adapter.prefixed_chat_id(phone)
-                    response = unified_handle_message(prefixed, text, user_info, channel="whatsapp")
-                    adapter.send_response(phone, response)
+                    try:
+                        response = unified_handle_message(prefixed, text, user_info, channel="whatsapp")
+                        adapter.send_response(phone, response)
+                    except Exception as e:
+                        # Ein Fehler bei EINER Nachricht darf weder die Antwort
+                        # verschlucken (Kunde saehe nur "tippt...", die Nachricht ist
+                        # schon dedupt → kein Meta-Retry) noch die uebrigen Nachrichten
+                        # im selben Webhook-Batch mitreissen.
+                        log.error(f"[WA:{phone}] Verarbeitung fehlgeschlagen: {e}", exc_info=True)
+                        try:
+                            adapter._send_message(phone, "Ups, da kam mir gerade kurz was dazwischen. 😅 Schreib's mir bitte nochmal!")
+                        except Exception:
+                            pass
 
         return jsonify(ok=True), 200
     except Exception as e:
