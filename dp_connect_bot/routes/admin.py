@@ -56,6 +56,23 @@ def admin_reorder_reminders():
     if not _require_admin():
         return jsonify(ok=False, error="Unauthorized"), 401
     data = request.get_json(silent=True) or {}
+    # Test-Send: einmaliges Template an EINE Nummer (Beispielwerte) zum Pruefen des
+    # Renderings — unabhaengig vom enabled-Flag und der Faelligkeit.
+    test_phone = (request.args.get("test_phone") or data.get("test_phone") or "").strip()
+    if test_phone:
+        try:
+            from dp_connect_bot.services.bot_config import load_bot_config
+            cfg = load_bot_config()
+            tmpl = (cfg.get("reorder_wa_template") or "").strip()
+            lang = (cfg.get("reorder_wa_lang") or "de").strip()
+            if not tmpl:
+                return jsonify(ok=False, error="reorder_wa_template ist nicht gesetzt"), 200
+            from dp_connect_bot.adapters.whatsapp import WhatsAppAdapter
+            ok = WhatsAppAdapter().send_template(test_phone, tmpl, ["Test", "21"], lang=lang)
+            return jsonify(ok=bool(ok), test_send=True, template=tmpl, lang=lang, to=test_phone), 200
+        except Exception as e:
+            log.error(f"[admin_reorder_reminders] test_send: {e}")
+            return jsonify(ok=False, error=str(e)[:200]), 500
     dry = (request.args.get("dry_run") in ("1", "true", "yes")) or bool(data.get("dry_run"))
     try:
         from dp_connect_bot.services.reorder_reminders import check_and_remind
