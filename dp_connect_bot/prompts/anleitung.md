@@ -19,6 +19,10 @@ Ich bin rund um die Uhr für dich da — so holst du das Meiste raus:
 
 🔁 *Nachbestellen* — "Nochmal das gleiche wie letztes Mal" und fertig
 
+🔮 *Nachbestell-Erinnerung* — frag "Was soll ich nachbestellen?" oder "Bin ich dran?". Ich kenne deinen Rhythmus und sag dir, was fällig ist.
+
+🌍 *Deine Sprache* — schreib mir einfach auf Türkisch, Arabisch, Englisch … ich antworte in deiner Sprache.
+
 📋 *Deine Bestellungen & Rechnungen*
 • "Zeig mir meine letzten Bestellungen" (auch ältere — sag "zeig mir mehr")
 • "Was war in Bestellung 8511?" — auch alte Bestellungen im Detail

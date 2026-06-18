@@ -252,6 +252,19 @@ ORDER_TOOLS = [
             "required": ["product_id"],
         },
     },
+    {
+        "name": "reorder_suggestion",
+        "description": (
+            "Analysiert die Bestell-Historie des VERIFIZIERTEN Kunden: seinen "
+            "Bestell-Rhythmus (alle wie viele Tage), wie lange die letzte Bestellung "
+            "her ist, ob er fuer eine Nachbestellung FAELLIG ist, und seine haeufigsten "
+            "Stammartikel. Nutze es, wenn der Kunde nach Nachbestellung fragt ('was soll "
+            "ich nachbestellen', 'auffuellen', 'das uebliche', 'bin ich dran', 'wann "
+            "hab ich zuletzt bestellt') ODER um einen Stammkunden proaktiv zu erinnern. "
+            "Kein Input noetig — der Kunde steht ueber die Session fest."
+        ),
+        "input_schema": {"type": "object", "properties": {}},
+    },
 ]
 
 
@@ -266,11 +279,33 @@ def _execute_order_tool(tool_name, tool_input, session=None):
         format_search_results, format_parent_with_variations, get_category_overview,
     )
     try:
-        if tool_name in ("lookup_my_orders", "get_invoice", "get_order_detail", "list_my_invoices", "track_my_order"):
+        if tool_name in ("lookup_my_orders", "get_invoice", "get_order_detail", "list_my_invoices", "track_my_order", "reorder_suggestion"):
             verified = (session or {}).get("verified") or {}
             customer_id = verified.get("customer_id")
             if not customer_id:
                 return "FEHLER: Kunde nicht verifiziert — bitte erst verifizieren (E-Mail/Nummer)."
+
+            if tool_name == "reorder_suggestion":
+                from dp_connect_bot.services.reorder_engine import analyze
+                r = analyze(customer_id)
+                if not r.get("ok"):
+                    return "Konnte die Bestell-Historie gerade nicht analysieren."
+                if not r.get("enough_history"):
+                    return (f"Noch zu wenig Bestell-Historie fuer eine Rhythmus-Vorhersage "
+                            f"({r.get('order_count', 0)} Bestellung[en]) — biete normal eine "
+                            "Nachbestellung der letzten Bestellung an, falls gewuenscht.")
+                top = ", ".join(r.get("top_products", [])) or "(keine wiederkehrenden Stammartikel erkannt)"
+                faellig = "JA, faellig" if r.get("due") else "noch nicht faellig"
+                return (
+                    f"NACHBESTELL-ANALYSE: Rhythmus ~alle {r['avg_interval_days']} Tage; "
+                    f"letzte Bestellung vor {r['days_since_last']} Tagen ({r['last_order_date']}). "
+                    f"Faellig: {faellig}. Haeufigste Stammartikel: {top}. "
+                    "→ Wenn FAELLIG: freundlich + proaktiv in der Sprache des Kunden auf die "
+                    "Nachbestellung hinweisen ('du bestellst etwa alle X Tage, deine letzte ist Y "
+                    "Tage her — auffuellen?') und anbieten, die letzte Bestellung zu laden. Wenn "
+                    "NICHT faellig: nicht aufdraengen, nur auf Nachfrage erwaehnen."
+                )
+
             from dp_connect_bot.services import chat_order
             if tool_name == "lookup_my_orders":
                 limit = tool_input.get("limit", 5)
