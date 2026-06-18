@@ -38,8 +38,13 @@ _NL_OPTOUT_MSG = (
 
 # Text-Keywords werden NUR exakt (getrimmt, lowercase) gematcht, damit normale
 # Nachrichten wie "wann kommt euer newsletter?" NICHT faelschlich ausloesen.
-_NL_OPTIN_KEYWORDS = ("newsletter", "anmelden", "abonnieren")
-_NL_OPTOUT_KEYWORDS = ("abmelden", "stop", "abbestellen")
+# WICHTIG: KEINE Wörter, die mit echten Bot-Funktionen kollidieren — "anmelden"
+# meint im B2B-Shop fast immer LOGIN (steht in SUPPORT_KEYWORDS), bares "stop"
+# bricht eine laufende Mengen-Auswahl ab. Beide würden den Kunden sonst still in
+# die Newsletter-Bestätigung umleiten. Die EIGENTLICHE Opt-in/out-Quelle ist der
+# Template-Button "Ja"/"Nein" (type=="button", unten) + die dp-tools-Weiterleitung.
+_NL_OPTIN_KEYWORDS = ("newsletter", "newsletter anmelden", "abonnieren", "newsletter abonnieren")
+_NL_OPTOUT_KEYWORDS = ("abmelden", "abbestellen", "newsletter abbestellen", "newsletter stop")
 
 
 def _newsletter_intent(payload):
@@ -157,7 +162,7 @@ def whatsapp_webhook():
 
                     elif msg.get("type") == "text":
                         text = (msg.get("text") or {}).get("body", "")
-                        if not text:
+                        if not text.strip():  # nur Whitespace ("   ") ist auch leer
                             continue
 
                     # --- Voice message ---
