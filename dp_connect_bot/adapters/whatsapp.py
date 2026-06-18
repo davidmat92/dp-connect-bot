@@ -23,7 +23,11 @@ class WhatsAppAdapter(ChannelAdapter):
     def send_response(self, chat_id, response: BotResponse):
         if response.is_silent:
             return
-        if not response.text:
+        # Leerer Text OHNE Keyboard → nichts zu senden. ABER: ein reines Keyboard
+        # (z.B. die KI-Antwort war nur [SHOW_FLAVORS:id] → Text leer) MUSS trotzdem
+        # raus — sonst sieht der WhatsApp-Kunde seine Geschmacks-/Mengenauswahl NIE.
+        # Den fehlenden Body faengt _send_message mit "👇" ab.
+        if not response.text and not response.keyboards:
             return
 
         # Build WhatsApp-specific UI
@@ -78,7 +82,7 @@ class WhatsAppAdapter(ChannelAdapter):
                 break
 
         # Clean markdown for WhatsApp (remove unsupported syntax)
-        text = self._clean_text(response.text) + text_suffix
+        text = self._clean_text(response.text or "") + text_suffix
         self._send_message(chat_id, text, buttons=buttons, list_menu=list_menu)
 
     def send_typing(self, chat_id):
@@ -146,6 +150,13 @@ class WhatsAppAdapter(ChannelAdapter):
         if not WHATSAPP_TOKEN or not WHATSAPP_PHONE_ID:
             log.warning("WhatsApp nicht konfiguriert")
             return False
+
+        text = text or ""
+        # Interactive (Liste/Buttons) verlangt einen NICHT-leeren Body — sonst lehnt
+        # Meta ab UND der Text-Fallback waere auch leer → der Kunde bekaeme GAR nichts
+        # (z.B. wenn die KI-Antwort nur ein [SHOW_FLAVORS:id]-Tag war).
+        if (list_menu or (buttons and len(buttons) <= 3)) and not text.strip():
+            text = "👇"
 
         headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}", "Content-Type": "application/json"}
 
@@ -227,7 +238,7 @@ class WhatsAppAdapter(ChannelAdapter):
                                 f"{WHATSAPP_API}/{WHATSAPP_PHONE_ID}/messages",
                                 headers=headers,
                                 json={"messaging_product": "whatsapp", "to": phone,
-                                      "type": "text", "text": {"body": text[:4096]}},
+                                      "type": "text", "text": {"body": text[:4096] or "👇"}},
                                 timeout=10,
                             )
                             if r2.ok:
