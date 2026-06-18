@@ -17,7 +17,9 @@ def _avail_str(product):
     + Platzhalter-Bestand) faelschlich fuer 'sofort da/vorraetig'."""
     if product.get("preorder"):
         txt = (product.get("preorder_text") or "").strip()
-        return "🔜 VORBESTELLBAR" + (f" (lieferbar ab {txt})" if txt else " (noch nicht auf Lager)")
+        # Bewusst LAUT + unmissverstaendlich: das Produkt steht zwar technisch auf
+        # "instock" (Platzhalter-Bestand), darf aber NIE als vorraetig gelten.
+        return "❗NUR VORBESTELLBAR – NICHT auf Lager" + (f" (lieferbar ab {txt})" if txt else "")
     return stock_label(product.get("stock"))
 
 
