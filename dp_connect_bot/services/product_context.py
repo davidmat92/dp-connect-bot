@@ -11,6 +11,16 @@ from dp_connect_bot.utils.formatting import (
 )
 
 
+def _avail_str(product):
+    """Verfuegbarkeits-Label fuer den KI-Kontext. Vorbestellungen werden klar als
+    solche markiert — sonst haelt der Bot ein Preorder-Produkt (stock_status=instock
+    + Platzhalter-Bestand) faelschlich fuer 'sofort da/vorraetig'."""
+    if product.get("preorder"):
+        txt = (product.get("preorder_text") or "").strip()
+        return "🔜 VORBESTELLBAR" + (f" (lieferbar ab {txt})" if txt else " (noch nicht auf Lager)")
+    return stock_label(product.get("stock"))
+
+
 def staffel_str(item):
     """Formatiert ALLE Staffelpreis-Stufen eines Produkts fuer den KI-Kontext,
     z.B. ' | Staffelpreis: ab 100 Stk 15,90 €, ab 500 Stk 14,90 €'.
@@ -147,7 +157,8 @@ def format_search_results(term):
             bs_tag = " ⭐BESTSELLER" if is_bs else ""
             price = format_price_de(p.get("price"))
             vpe = f" | VPE: {p['vpe']}" if p.get("vpe") else ""
-            parts.append(f"\n  {p['title']} [ID:{p['id']}] | {price}{vpe}{staffel_str(p)}{bs_tag}")
+            pre = f" | {_avail_str(p)}" if p.get("preorder") else ""
+            parts.append(f"\n  {p['title']} [ID:{p['id']}] | {price}{vpe}{pre}{staffel_str(p)}{bs_tag}")
 
     elif all_found:
         parts.append(f"\n=== '{term}' NICHT LIEFERBAR ===")
@@ -175,7 +186,7 @@ def format_parent_with_variations(parent, avail_vars=None, is_bestseller=False):
     lines = []
     price = format_price_de(parent.get("price")) if parent.get("price") else ""
     vpe = f" | VPE: {parent['vpe']}" if parent.get("vpe") else ""
-    sl = stock_label(parent.get("stock"))
+    sl = _avail_str(parent)
     stock_str = f" | {sl}" if sl else ""
     bs_tag = " ⭐BESTSELLER" if is_bestseller else ""
 
@@ -205,7 +216,7 @@ def format_parent_with_variations(parent, avail_vars=None, is_bestseller=False):
         for v in avail_vars:
             name = get_variant_display_name(v)
             vprice = format_price_de(v.get("price"))
-            vsl = stock_label(v.get("stock"))
+            vsl = _avail_str(v)
             vstock_str = f" | {vsl}" if vsl else ""
             sonder_str = staffel_str(v)
             lines.append(f"    - {name} [ID:{v['id']}] | {vprice}{vstock_str}{sonder_str}")

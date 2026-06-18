@@ -443,6 +443,11 @@ class ProductCache:
             "sonderpreis_min": str(meta.get("_sonderpreis_min", parent_meta.get("_sonderpreis_min", "")) or ""),
             "stock_status": p.get("stock_status", ""),
             "stock": str(p.get("stock_quantity", "") or ""),
+            # DP-eigenes Vorbestell-System: Preorder-Produkte stehen auf
+            # stock_status=instock mit Platzhalter-Bestand (z.B. 9999) → ohne
+            # dieses Flag haelt der Bot sie faelschlich fuer "sofort da".
+            "preorder": str(meta.get("_dpconnect_preorder", parent_meta.get("_dpconnect_preorder", "")) or "").strip().lower() == "yes",
+            "preorder_text": u(str(meta.get("_dpconnect_preorder_date_text", parent_meta.get("_dpconnect_preorder_date_text", "")) or "").strip()),
             "category": u(cats),
             "vpe": str(meta.get("_vpe", parent_meta.get("_vpe", "")) or get_attr("vpe", "pa_vpe") or ""),
             "url": p.get("permalink", (parent or {}).get("permalink", "")),
