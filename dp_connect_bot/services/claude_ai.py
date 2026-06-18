@@ -209,15 +209,17 @@ ORDER_TOOLS = [
         "name": "notify_when_back",
         "description": (
             "Merkt den Kunden vor, damit er automatisch benachrichtigt wird, sobald ein "
-            "AKTUELL NICHT LIEFERBARES Produkt wieder auf Lager ist ('Wieder-da-Alarm'). "
-            "Nutze es NUR, wenn der Kunde das moechte ('sag Bescheid wenn wieder da', "
-            "'benachrichtige mich') UND die Variante gerade ausverkauft ist. "
-            "product_id = ID der konkreten, nicht lieferbaren Variante."
+            "Produkt (wieder) wirklich lieferbar ist ('Wieder-da-Alarm'). "
+            "Nutze es, wenn der Kunde das moechte ('sag Bescheid wenn wieder da', "
+            "'benachrichtige mich wenn verfuegbar') UND die Variante gerade AUSVERKAUFT "
+            "ODER NUR VORBESTELLBAR ist (beides moeglich!). Bei vorbestellbaren Produkten "
+            "wird erst benachrichtigt, wenn sie WIRKLICH auf Lager sind (nicht beim "
+            "Platzhalter-Bestand). product_id = ID der konkreten Variante."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "product_id": {"type": "string", "description": "ID der nicht lieferbaren Variante."}
+                "product_id": {"type": "string", "description": "ID der ausverkauften ODER vorbestellbaren Variante."}
             },
             "required": ["product_id"],
         },
@@ -352,7 +354,11 @@ def _execute_order_tool(tool_name, tool_input, session=None):
             prod = cache.get_product_by_id(pid)
             if not prod:
                 return "Dieses Produkt finde ich gerade nicht — bitte nochmal die Variante suchen."
-            if cache.is_available(pid):
+            is_preorder = bool(prod.get("preorder"))
+            # Vorbestell-Produkte stehen technisch auf instock (Platzhalter-Bestand),
+            # sind aber NICHT lieferbar → Vormerkung trotzdem erlauben. Nur GENUINE
+            # Verfuegbarkeit (lieferbar UND nicht preorder) braucht keine Vormerkung.
+            if cache.is_available(pid) and not is_preorder:
                 return f"Gute Nachricht: {prod.get('title','Das Produkt')} ist AKTUELL vorrätig — kann direkt eingepackt werden, keine Vormerkung nötig."
             channel = (session or {}).get("channel", "")
             chat_id = (session or {}).get("chat_id", "")
@@ -364,7 +370,8 @@ def _execute_order_tool(tool_name, tool_input, session=None):
             from dp_connect_bot.services.restock_watch import add_watch
             name = (session or {}).get("customer_name", "")
             if add_watch(pid, channel, recipient, name):
-                return (f"Vorgemerkt! ✅ Sobald {prod.get('title','das Produkt')} wieder lieferbar ist, "
+                when = "lieferbar" if is_preorder else "wieder lieferbar"
+                return (f"Vorgemerkt! ✅ Sobald {prod.get('title','das Produkt')} {when} ist, "
                         "melde ich mich automatisch bei dir.")
             return "Hmm, das Vormerken hat gerade nicht geklappt — versuch's bitte gleich nochmal."
 

@@ -121,9 +121,13 @@ def check_and_notify():
         notified = 0
         for pid in pids:
             try:
-                if not cache.is_available(pid):
-                    continue
                 prod = cache.get_product_by_id(pid)
+                # "Wirklich da" = im Verfuegbar-Set UND nicht (mehr) als Vorbestellung
+                # markiert. Preorder-Produkte stehen technisch auf instock+Platzhalter-
+                # Bestand → ohne diese Pruefung wuerde der Alarm SOFORT (faelschlich)
+                # ausloesen, statt erst wenn die Vorbestellung echt lieferbar wird.
+                if not cache.is_available(pid) or (prod and prod.get("preorder")):
+                    continue
                 name = (prod.get("title") if prod else "") or "Dein vorgemerktes Produkt"
                 for channel, recipient, _wname in _watchers(pid):
                     if _dispatch(channel, recipient, name):
