@@ -242,6 +242,34 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
         session_manager.save(chat_id, session)
         return resp
 
+    # --- Human takeover (MUSS vor detect_mode/Login/Support stehen) ---
+    # Hat ein Mitarbeiter uebernommen, darf KEIN anderer Handler die Nachricht
+    # abfangen — sonst bekommt der Kunde Bot-Antworten (z.B. Login-/Support-Prompt)
+    # statt der Weiterleitung. Der Ausstiegs-Button (mode_order) lief schon oben
+    # durch den Callback-Gate und beendet human_mode; /start ebenso (Command oben).
+    if is_human_mode(session):
+        lower = text.strip().lower()
+        order_intents = {"bestellen", "bestell", "möchte bestellen", "möchte was bestellen",
+                         "ich will bestellen", "kann ich bestellen", "order", "produkte",
+                         "was habt ihr", "elf bar", "lost mary", "pods", "snacks", "drinks"}
+        if lower in order_intents or stripped.startswith("/start"):
+            session["human_mode"] = False
+            session["mode"] = "order"
+            session_manager.save(chat_id, session)
+            return BotResponse(text="🛒 Klar! Bestell-Modus ist aktiv. Was brauchst du?")
+        session["conversation"].append({"role": "user", "content": text})
+        session_manager.save(chat_id, session)
+        # Klar erkennbarer Ausstieg: ein Button (mode_order → human_mode=False) gilt
+        # auf ALLEN Kanaelen (auch Webchat) und ist eindeutig — anders als der exakte
+        # Stichwort-Abgleich, der einen Kunden sonst dauerhaft in der Weiterleitung
+        # festhaelt, ohne ein laufendes Mitarbeiter-Gespraech zu kapern.
+        return BotResponse(
+            text=("💬 Deine Nachricht wurde weitergeleitet — ein Mitarbeiter meldet sich gleich!\n\n"
+                  "Wenn du in der Zwischenzeit selbst weiter bestellen willst, tippe unten auf "
+                  "*🛒 Bestellen* (oder schreib /start)."),
+            keyboards=[Keyboard(type=KeyboardType.MODE_CHOICE)],
+        )
+
     # --- Pending selection (manual quantity input) ---
     pending = session.get("pending_selection")
     if pending and stripped.isdigit():
@@ -289,30 +317,6 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
         resp = handle_support_message(chat_id, text, session, channel)
         session_manager.save(chat_id, session)
         return resp
-
-    # --- Human takeover ---
-    if is_human_mode(session):
-        lower = text.strip().lower()
-        order_intents = {"bestellen", "bestell", "möchte bestellen", "möchte was bestellen",
-                         "ich will bestellen", "kann ich bestellen", "order", "produkte",
-                         "was habt ihr", "elf bar", "lost mary", "pods", "snacks", "drinks"}
-        if lower in order_intents or stripped.startswith("/start"):
-            session["human_mode"] = False
-            session["mode"] = "order"
-            session_manager.save(chat_id, session)
-            return BotResponse(text="🛒 Klar! Bestell-Modus ist aktiv. Was brauchst du?")
-        session["conversation"].append({"role": "user", "content": text})
-        session_manager.save(chat_id, session)
-        # Klar erkennbarer Ausstieg: ein Button (mode_order → human_mode=False) gilt
-        # auf ALLEN Kanaelen (auch Webchat) und ist eindeutig — anders als der exakte
-        # Stichwort-Abgleich, der einen Kunden sonst dauerhaft in der Weiterleitung
-        # festhaelt, ohne ein laufendes Mitarbeiter-Gespraech zu kapern.
-        return BotResponse(
-            text=("💬 Deine Nachricht wurde weitergeleitet — ein Mitarbeiter meldet sich gleich!\n\n"
-                  "Wenn du in der Zwischenzeit selbst weiter bestellen willst, tippe unten auf "
-                  "*🛒 Bestellen* (oder schreib /start)."),
-            keyboards=[Keyboard(type=KeyboardType.MODE_CHOICE)],
-        )
 
     lower_text = text.strip().lower()
 
