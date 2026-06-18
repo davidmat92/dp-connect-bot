@@ -103,6 +103,13 @@ class SessionManager:
         """Persist session to SQLite."""
         chat_id = str(chat_id)
         conn = self._conn()
+        # Conversation-History deckeln — sie waechst sonst UNBEGRENZT (jeder Turn
+        # haengt an, nichts trimmt) → aufgeblaehte SQLite-Zeile + langsamere
+        # Serialisierung bei langen Sessions. Die KI nutzt ohnehin nur die letzten
+        # ~24; 60 laesst genug Puffer fuers Dashboard/Archiv.
+        conv = session.get("conversation")
+        if isinstance(conv, list) and len(conv) > 60:
+            session["conversation"] = conv[-60:]
         now = session.get("last_activity", datetime.now().isoformat())
         created = session.get("created_at", now)
         conn.execute(

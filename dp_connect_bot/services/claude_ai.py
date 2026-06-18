@@ -76,6 +76,34 @@ def _api_call(system, messages, tools=None, max_tokens=2000):
     return resp.json()
 
 
+def _sanitize_messages(msgs):
+    """Macht das Message-Array API-tauglich: beginnt mit 'user' und die Rollen
+    wechseln strikt ab (Anthropic verlangt das, sonst HTTP 400 → Kunde bekommt
+    den Fehler-Fallback). Schuetzt gegen Handler, die unpaarige Eintraege
+    anhaengen (z.B. der human_mode-Block haengt NUR eine user-Message an) und
+    gegen History-Fenster, die mitten in einem Paar starten. Nur fuer
+    Text-Messages — die Tool-Bloecke im Loop sind per Konstruktion korrekt gepaart."""
+    out = []
+    for m in msgs:
+        role = m.get("role")
+        content = m.get("content")
+        if role not in ("user", "assistant") or not content:
+            continue
+        if not out:
+            if role != "user":
+                continue  # fuehrende Assistant-Message(s) verwerfen
+            out.append({"role": role, "content": content})
+        elif out[-1]["role"] == role:
+            # gleiche Rolle direkt hintereinander → zusammenfassen statt 400
+            if isinstance(out[-1]["content"], str) and isinstance(content, str):
+                out[-1]["content"] += "\n" + content
+            else:
+                out[-1] = {"role": role, "content": content}
+        else:
+            out.append({"role": role, "content": content})
+    return out
+
+
 # ============================================================
 # ORDER MODE
 # ============================================================
@@ -445,8 +473,14 @@ def call_claude(session, user_message, product_context="", wc_cart=None):
         cart_lines = []
         cart_total = 0.0
         for item in wc_cart:
-            p = float(item.get("price", 0))
-            qty = int(item.get("quantity", 1))
+            # Defensiv parsen — dieser Block laeuft VOR dem try/except, ein
+            # ungueltiger Frontend-Preis ("5,30") oder eine kaputte Menge wuerde
+            # sonst die ganze Antwort crashen (HTTP 500, Nachricht verloren).
+            p = parse_price(item.get("price", 0))
+            try:
+                qty = int(float(item.get("quantity", 1)))
+            except (ValueError, TypeError):
+                qty = 1
             sub = p * qty
             cart_total += sub
             name = item.get("name", "?")
@@ -492,6 +526,7 @@ def call_claude(session, user_message, product_context="", wc_cart=None):
         content = f"[{cart_str}]\n\n[KUNDE]\n{user_message}"
 
     messages.append({"role": "user", "content": content})
+    messages = _sanitize_messages(messages)
 
     try:
         data = _api_call(SYSTEM_PROMPT, messages, tools=ORDER_TOOLS)
@@ -762,6 +797,7 @@ def call_claude_support(session, user_message):
     # Build conversation messages (last 20 for support – may need more context)
     messages = list(session["conversation"][-20:])
     messages.append({"role": "user", "content": user_message})
+    messages = _sanitize_messages(messages)
 
     escalated = False
     escalation_info = None
