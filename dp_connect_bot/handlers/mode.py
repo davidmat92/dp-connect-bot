@@ -24,6 +24,16 @@ PRODUCT_KEYWORDS = {
     "kiosk", "empfehlung", "empfehlen", "bestseller", "was neues", "neuheiten",
 }
 
+# Reine Begruessungen ohne Anliegen → Modus-Menue zur Orientierung. Alles andere
+# (auch kurze Produktfragen wie "panini da?", deren Name nicht in PRODUCT_KEYWORDS
+# steht) geht an die Bestell-KI, die wirklich suchen + antworten kann.
+GREETINGS = {
+    "hi", "hallo", "hey", "moin", "moin moin", "servus", "na", "yo", "jo",
+    "tach", "hello", "hej", "huhu", "hallöchen", "hallöle", "hi du", "hey du",
+    "hallo du", "grüß dich", "gruß dich", "grüß gott", "gruss gott",
+    "guten morgen", "guten tag", "guten abend", "schönen guten tag", "moinsen",
+}
+
 # Support-Signale fuer Smart Detection
 SUPPORT_KEYWORDS = {
     "wo bleibt", "wo ist meine bestellung", "bestellung verfolgen",
@@ -185,21 +195,16 @@ def detect_mode(session, text, channel):
         return None
 
     if session.get("message_count", 0) <= 1:
-        # Guest users → route directly to login help (only available feature)
-        if session.get("is_guest"):
-            session["mode"] = "login_help"
-            session["login_step"] = "ask_email"
-            return BotResponse(
-                text=(
-                    "Hey! 👋\n\n"
-                    "Probleme beim Einloggen? Ich helfe dir!\n\n"
-                    "🔑 Was ist deine E-Mail-Adresse, mit der du registriert bist? ✉️"
-                ),
-            )
-
-        # Laengere erste Nachrichten sind fast immer konkrete Anliegen —
-        # direkt zur Bestell-KI (kann suchen + eskalieren) statt ins Menue
-        if len(lower.split()) >= 4:
+        # Erste Nachricht ohne erkanntes Produkt-/Support-Signal.
+        # NUR eine reine Begruessung ("hi", "moin") → Modus-Menue zur Orientierung.
+        # Alles MIT Inhalt — auch kurze Produktfragen wie "panini da?", deren Name
+        # nicht in PRODUCT_KEYWORDS steht — geht an die Bestell-KI, die wirklich
+        # SUCHEN + antworten kann. (Frueher wurden Gaeste pauschal in die Login-
+        # Hilfe geschickt → Produktfragen landeten faelschlich beim Login.) Login
+        # bleibt ueber Support-Keywords ("einloggen"/"passwort"/…) + Menue erreichbar.
+        g = lower.strip(" !?.,")
+        is_greeting = g in GREETINGS or len(g) <= 2
+        if not is_greeting:
             if order_enabled:
                 session["mode"] = "order"
             else:
@@ -207,7 +212,6 @@ def detect_mode(session, text, channel):
                 session["support_step"] = None
             return None
 
-        # Kurze erste Nachricht ("hi") ohne Signal → Modus-Menue
         name = session.get("customer_name", "")
         session["mode"] = "choosing"
         return BotResponse(
