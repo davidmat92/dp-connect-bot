@@ -278,20 +278,23 @@ def _execute_order_tool(tool_name, tool_input, session=None):
                     )
                     return (f"BESTELLUNG #{res['number']} vom {res['date']} — {res['status']} — "
                             f"{str(res['total']).replace('.', ',')}€ ({res.get('payment','')})\n{items}")
-                reasons = {
-                    "not_owner": "Diese Bestellung gehoert NICHT zu diesem Kunden — NICHT herausgeben!",
-                    "order_not_found": "Diese Bestellnummer gibt es nicht.",
-                }
+                # not_owner und order_not_found bewusst IDENTISCH — sonst koennte ein
+                # verifizierter Kunde am unterschiedlichen Text ablesen, welche
+                # Bestellnummern existieren (Enumeration). 'NICHT herausgeben' steht
+                # implizit drin: es gibt schlicht keine Daten zurueck.
+                same = "Diese Bestellnummer gibt es nicht oder gehoert nicht zu diesem Konto."
+                reasons = {"not_owner": same, "order_not_found": same}
                 return reasons.get(res.get("reason"), "Konnte die Bestellung nicht laden.")
 
             if tool_name == "track_my_order":
                 order_id = str(tool_input.get("order_id", "")).strip() or None
                 res = chat_order.get_tracking(customer_id, order_id)
                 if not res.get("ok"):
+                    same = "Diese Bestellnummer gibt es nicht oder gehoert nicht zu diesem Konto."
                     reasons = {
                         "no_orders": "Der Kunde hat noch keine Bestellungen.",
-                        "not_owner": "Diese Bestellung gehoert NICHT zu diesem Kunden!",
-                        "order_not_found": "Diese Bestellnummer gibt es nicht.",
+                        "not_owner": same,
+                        "order_not_found": same,
                     }
                     return reasons.get(res.get("reason"), "Konnte den Sendungsstatus nicht abrufen.")
                 out = f"BESTELLUNG #{res.get('number')} — Status: {res.get('status')}\n{res.get('status_hint', '')}"
@@ -337,11 +340,12 @@ def _execute_order_tool(tool_name, tool_input, session=None):
                 return (f"RECHNUNG zu Bestellung #{res.get('number')} "
                         f"(Rechnungsnr. {res.get('invoice_number', '')}): {res['url']}\n"
                         "Gib dem Kunden diesen Link — er ist sicher und zeitlich begrenzt gueltig.")
+            same = "Diese Bestellnummer gibt es nicht oder gehoert nicht zu diesem Konto."
             reasons = {
                 "no_orders": "Der Kunde hat noch keine Bestellungen.",
                 "no_invoice": f"Zu Bestellung #{res.get('number','?')} gibt es noch keine Rechnung (kommt nach Abschluss).",
-                "not_owner": "Diese Bestellung gehoert nicht zu diesem Kunden — NICHT herausgeben!",
-                "order_not_found": "Diese Bestellnummer gibt es nicht.",
+                "not_owner": same,
+                "order_not_found": same,
                 "no_easybill": "Rechnungssystem gerade nicht erreichbar.",
             }
             return reasons.get(res.get("reason"), "Konnte die Rechnung gerade nicht abrufen.")
@@ -674,10 +678,12 @@ def _execute_support_tool(tool_name, tool_input):
 
             result = wc_client.lookup_order(tool_input["identifier"])
             if result:
-                # Verify email matches order's billing email
+                # Fail-CLOSED: E-Mail MUSS vorhanden sein UND passen. Hat die
+                # Bestellung keine Rechnungs-E-Mail, kann nicht verifiziert werden
+                # → nicht herausgeben (frueher wurde sie dann trotzdem geliefert).
                 order_email = result.get("billing", {}).get("email", "").strip().lower()
-                if order_email and verification_email != order_email:
-                    log.warning(f"[lookup_order] Email mismatch: provided={verification_email}, order={order_email}")
+                if not order_email or verification_email != order_email:
+                    log.warning(f"[lookup_order] Email mismatch/fehlt: provided={verification_email}, order={order_email or '(keine)'}")
                     return {"success": False, "error": "Die angegebene E-Mail-Adresse stimmt nicht mit der Bestellung ueberein. Bitte den Kunden bitten, die E-Mail-Adresse zu pruefen, mit der er bei DP Connect registriert ist."}
                 return {"success": True, "order": result}
             return {"success": False, "error": "Keine Bestellung gefunden mit dieser Angabe."}
@@ -693,13 +699,16 @@ def _execute_support_tool(tool_name, tool_input):
             if not verification_email:
                 return {"success": False, "error": "Verifizierung erforderlich: Frag den Kunden nach seiner E-Mail-Adresse bevor du Tracking-Infos herausgibst."}
 
-            # First lookup order to verify email
+            # Fail-CLOSED: Tracking nur, wenn die Bestellung gefunden wird UND die
+            # E-Mail zur Rechnungsadresse passt. Frueher wurde die Pruefung
+            # uebersprungen, wenn lookup_order None lieferte ODER die Bestellung
+            # keine Rechnungs-E-Mail hatte → Tracking (DHL-Nr./Link) konnte ohne
+            # Verifizierung abfliessen.
             order_data = wc_client.lookup_order(tool_input["order_id"])
-            if order_data:
-                order_email = order_data.get("billing", {}).get("email", "").strip().lower()
-                if order_email and verification_email != order_email:
-                    log.warning(f"[get_order_tracking] Email mismatch: provided={verification_email}, order={order_email}")
-                    return {"success": False, "error": "Die angegebene E-Mail-Adresse stimmt nicht mit der Bestellung ueberein."}
+            order_email = (order_data or {}).get("billing", {}).get("email", "").strip().lower()
+            if not order_data or not order_email or verification_email != order_email:
+                log.warning(f"[get_order_tracking] Verifizierung fehlgeschlagen (gefunden={bool(order_data)}, mail_vorhanden={bool(order_email)})")
+                return {"success": False, "error": "Die E-Mail-Adresse stimmt nicht mit der Bestellung ueberein (oder die Bestellnummer wurde nicht gefunden). Bitte die bei DP Connect registrierte E-Mail pruefen."}
 
             result = wc_client.get_order_tracking(tool_input["order_id"])
             if result:

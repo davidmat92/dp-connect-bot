@@ -318,7 +318,9 @@ class WhatsAppAdapter(ChannelAdapter):
             desc = f"{name} · {price}/Stk"[:72] if len(name) > 24 else f"{price}/Stk"[:72]
             rows.append({
                 "id": f"sel_{v['id']}",
-                "title": name[:24],
+                # Leerer Row-Titel → Meta lehnt die GANZE Liste ab (400) und der
+                # Kunde saehe die Auswahl nicht. Fallback erzwingt einen Titel.
+                "title": (name or "Variante")[:24],
                 "description": desc,
             })
 
