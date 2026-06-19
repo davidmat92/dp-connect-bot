@@ -177,6 +177,13 @@ def whatsapp_webhook():
                         if btn:
                             text = btn.get("id", "")
                         else:
+                            # Unerwarteter interactive-Subtyp (weder button_reply noch
+                            # list_reply). "tippt..." steht bereits → NICHT stumm weg, sonst
+                            # tippt-dann-nichts. Kurzer Hinweis, dann naechste Nachricht.
+                            adapter._send_message(
+                                phone,
+                                "Sag mir einfach mit ein paar Worten, was du brauchst — dann geht's direkt weiter! 🙂",
+                            )
                             continue
 
                     elif msg.get("type") == "text":
