@@ -206,11 +206,17 @@ def whatsapp_webhook():
                             adapter._send_message(phone, "Das Foto konnte ich gerade nicht laden. 😅 Probier's nochmal oder beschreib mir das Produkt!")
                             continue
                         from dp_connect_bot.services.photo_vision import describe_photo, build_photo_message, _is_shelf_request
+                        is_shelf = _is_shelf_request(caption)
+                        if is_shelf:
+                            # Regal-Scan liest viele Produkte → Vision dauert bis ~60s.
+                            # Der "tippt..."-Indikator erlischt aber nach ~25s; ohne kurze
+                            # Rueckmeldung saesse der Kunde danach im Stillen vor dem Bildschirm.
+                            adapter._send_message(phone, "📸 Alles klar, ich schaue mir dein Regal an — einen Moment, ich liste auf, was nachzubestellen ist…")
                         desc = describe_photo(image_bytes, mime, caption)
                         if not desc:
                             adapter._send_message(phone, "Das Foto konnte ich nicht auswerten. 😅 Beschreib mir das Produkt einfach kurz!")
                             continue
-                        if _is_shelf_request(caption):  # Regal-Scan → Foto-Inventur speichern
+                        if is_shelf:  # Regal-Scan → Foto-Inventur speichern
                             from dp_connect_bot.services.shelf_inventory import save_scan
                             save_scan(adapter.prefixed_chat_id(phone), desc)
                         text = build_photo_message(desc, caption)

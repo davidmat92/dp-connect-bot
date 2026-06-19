@@ -8,7 +8,7 @@ from dp_connect_bot.adapters.base import ChannelAdapter
 from dp_connect_bot.config import WHATSAPP_TOKEN, WHATSAPP_PHONE_ID, WHATSAPP_API, log
 from dp_connect_bot.models.response import BotResponse, KeyboardType
 from dp_connect_bot.services.product_cache import cache
-from dp_connect_bot.utils.formatting import format_price_de, get_variant_display_name
+from dp_connect_bot.utils.formatting import format_price_de, get_variant_display_name, parse_price
 
 
 class WhatsAppAdapter(ChannelAdapter):
@@ -364,10 +364,9 @@ class WhatsAppAdapter(ChannelAdapter):
             vpe_num = 1
 
         product = cache.get_product_by_id(kb.product_id)
-        try:
-            price_num = float(product.get("price")) if product and product.get("price") else None
-        except (ValueError, TypeError):
-            price_num = None
+        # parse_price ist robust gegen "5,30€"/Komma-Formate (bares float() wuerfe);
+        # liefert 0.0 bei fehlend/ungueltig → die Preiszeile wird dann weggelassen.
+        price_num = parse_price(product.get("price")) if product else 0.0
         try:
             stock_num = int(product.get("stock")) if product and product.get("stock") else None
         except (ValueError, TypeError):
