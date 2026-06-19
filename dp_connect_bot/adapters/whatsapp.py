@@ -294,16 +294,19 @@ class WhatsAppAdapter(ChannelAdapter):
 
     @staticmethod
     def _maybe_enqueue(resp, payload):
-        """API-/Auth-Fehler puffern (Meta-Stoerung) — Empfaenger-Fehler nicht."""
+        """API-/Auth-Fehler puffern (Meta-Stoerung) — PERMANENTE Fehler nicht
+        (sonst vergiftet z.B. eine Out-of-24h-Window-Nachricht die Queue)."""
+        from dp_connect_bot.services.send_queue import enqueue, PERMANENT_SEND_ERRORS
         try:
             err = resp.json().get("error", {})
         except Exception:
             err = {}
-        # 131026/131030: Empfaenger kein WhatsApp-Nutzer / nicht erlaubt,
-        # 100: ungueltige Parameter → Retry zwecklos
-        if err.get("code") in (131026, 131030, 100):
+        code = err.get("code")
+        if code in PERMANENT_SEND_ERRORS:
+            if code in (131047, 470):
+                log.warning(f"WhatsApp: Empfaenger ausserhalb 24h-Fenster (Code {code}) — "
+                            "Freitext nicht zustellbar, nicht gepuffert (braucht Template).")
             return
-        from dp_connect_bot.services.send_queue import enqueue
         enqueue(payload)
 
     def _build_flavor_list(self, parent_id):

@@ -63,6 +63,30 @@ def _is_shelf_request(caption: str) -> bool:
     return any(kw in low for kw in _SHELF_KEYWORDS)
 
 
+def _downscale_for_vision(image_bytes: bytes):
+    """Verkleinert ein zu grosses Bild auf <= _MAX_IMAGE_BYTES (max ~1568px lange
+    Kante, JPEG). Gibt die neuen Bytes oder None (Pillow fehlt / Bild kaputt).
+    Pillow-Import bewusst LAZY + try/except — ist es im PA-venv nicht vorhanden,
+    soll nicht das ganze Foto-Modul brechen, sondern nur sauber degradieren."""
+    try:
+        import io
+        from PIL import Image
+        img = Image.open(io.BytesIO(image_bytes))
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+        img.thumbnail((1568, 1568))
+        for quality in (85, 70, 55, 40):
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=quality, optimize=True)
+            data = buf.getvalue()
+            if len(data) <= _MAX_IMAGE_BYTES:
+                return data
+        return None
+    except Exception as e:
+        log.error(f"Bild-Verkleinerung fehlgeschlagen: {e}")
+        return None
+
+
 def describe_photo(image_bytes: bytes, media_type: str = "image/jpeg", caption: str = "") -> str:
     """Beschreibt ein Kundenfoto. Gibt '' bei Fehlern zurueck.
 
@@ -72,8 +96,15 @@ def describe_photo(image_bytes: bytes, media_type: str = "image/jpeg", caption: 
     if not ANTHROPIC_API_KEY or not image_bytes:
         return ""
     if len(image_bytes) > _MAX_IMAGE_BYTES:
-        log.warning(f"Kundenfoto zu gross ({len(image_bytes)} bytes) - uebersprungen")
-        return ""
+        # Statt grosse Fotos abzulehnen: herunterskalieren (Claude Vision will eh
+        # max ~1568px) → das Foto FUNKTIONIERT, statt den Kunden mit einer Fehler-
+        # meldung abzuweisen. Klappt das nicht (Pillow fehlt/Bild kaputt) → aufgeben.
+        scaled = _downscale_for_vision(image_bytes)
+        if not scaled:
+            log.warning(f"Kundenfoto zu gross ({len(image_bytes)} bytes) + nicht verkleinerbar - uebersprungen")
+            return ""
+        image_bytes, media_type = scaled, "image/jpeg"
+        log.info(f"Kundenfoto auf {len(image_bytes)} bytes verkleinert (war zu gross)")
     shelf = _is_shelf_request(caption)
     prompt = _SHELF_PROMPT if shelf else _PHOTO_PROMPT
     max_tokens = 900 if shelf else 300

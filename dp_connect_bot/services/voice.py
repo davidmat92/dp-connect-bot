@@ -12,6 +12,11 @@ from dp_connect_bot.config import (
     WHATSAPP_TOKEN, WHATSAPP_API, log,
 )
 
+# Whisper-Limit ist 25 MB — groessere Audios gar nicht erst hochladen (sparen den
+# fehlschlagenden API-Call). WhatsApp-/Telegram-Sprachnachrichten sind praktisch
+# immer << das; dies ist ein defensiver Guard.
+_MAX_AUDIO_BYTES = 24 * 1024 * 1024
+
 
 def _whisper_vocab_prompt():
     """Marken-Glossar als Whisper-Bias-Prompt — sonst werden Produktnamen
@@ -88,6 +93,9 @@ def transcribe_telegram_voice(file_id):
         file_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{file_path}"
         audio_resp = requests.get(file_url, timeout=30)
         audio_resp.raise_for_status()
+        if len(audio_resp.content) > _MAX_AUDIO_BYTES:
+            log.warning(f"Voice (Telegram) zu gross ({len(audio_resp.content)} bytes) - uebersprungen")
+            return None
 
         suffix = ".ogg" if "ogg" in file_path else ".mp3"
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
@@ -160,6 +168,9 @@ def transcribe_whatsapp_voice(media_id):
         )
         audio_resp.raise_for_status()
         log.info(f"Voice: Audio heruntergeladen, {len(audio_resp.content)} bytes")
+        if len(audio_resp.content) > _MAX_AUDIO_BYTES:
+            log.warning(f"Voice (WhatsApp) zu gross ({len(audio_resp.content)} bytes) - uebersprungen")
+            return None
 
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
             tmp.write(audio_resp.content)

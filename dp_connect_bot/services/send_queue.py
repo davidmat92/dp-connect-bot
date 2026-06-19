@@ -23,6 +23,14 @@ _lock = threading.Lock()
 _MAX_AGE = 12 * 3600   # aelter als 12h nicht nachliefern (24h-Fenster!)
 _MAX_QUEUE = 500
 
+# PERMANENTE Sende-Fehler — Retry/Puffern zwecklos, SOFORT verwerfen:
+# 131026 unzustellbar, 131030 Empfaenger nicht erlaubt, 100 ungueltige Params,
+# 131047/470 Re-Engagement (>24h-Fenster → braucht Template, kein Freitext),
+# 131051 nicht unterstuetzter Typ, 131049 nicht zugestellt (Marketing-Limit).
+# Sonst wuerde EINE solche Nachricht (z.B. Admin-Reply nach >24h) bei jedem Flush
+# `api_down` setzen und die GANZE Queue bis zu 12h blockieren.
+PERMANENT_SEND_ERRORS = (131026, 131030, 100, 131047, 470, 131051, 131049)
+
 
 def _load() -> list:
     try:
@@ -85,9 +93,10 @@ def flush() -> dict:
                         err = resp.json().get("error", {})
                     except Exception:
                         pass
-                    # Empfaenger-Fehler (z.B. ungueltige Nummer) → verwerfen,
-                    # API-/Auth-Fehler → behalten und spaeter erneut
-                    if err.get("code") in (131026, 131030, 100):
+                    # Permanente Fehler verwerfen (sonst blockiert EINE solche
+                    # Nachricht via api_down die ganze Queue), echte API-/Auth-Fehler
+                    # behalten und spaeter erneut.
+                    if err.get("code") in PERMANENT_SEND_ERRORS:
                         dropped += 1
                     else:
                         remaining.append(item)

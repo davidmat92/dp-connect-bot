@@ -64,12 +64,14 @@ def _newsletter_intent(payload):
                     t = m.get("type")
                     if t == "button":
                         btn = m.get("button") or {}
-                        # Buttons sind KEIN Freitext → Substring-Match ist sicher
-                        # (faengt "Nein", "👎 Nein", "Nein, danke" etc.). 'nein' zuerst.
-                        txt = str(btn.get("text") or btn.get("payload") or "").strip().lower()
-                        if "nein" in txt or txt in ("no",):
+                        # ANKER an den Anfang (startswith), nicht irgendwo im Text —
+                        # sonst koennte ein "Ja"/"Nein"-aehnlicher Button eines ANDEREN
+                        # Templates (Restock/Reorder) faelschlich Newsletter ausloesen.
+                        # Faengt "Nein, danke", "👎 Nein", "Ja, gerne" etc.
+                        txt = str(btn.get("text") or btn.get("payload") or "").strip().lower().lstrip("👍👎🔔📭✅❌ ")
+                        if txt.startswith("nein") or txt == "no":
                             return "out", frm, mid
-                        if "ja" in txt or txt in ("yes",):
+                        if txt.startswith("ja") or txt == "yes":
                             return "in", frm, mid
                     elif t == "text":
                         b = str((m.get("text") or {}).get("body") or "").strip().lower()
@@ -260,5 +262,5 @@ def _download_whatsapp_media(media_id):
         data.raise_for_status()
         return data.content, mime
     except Exception as e:
-        log.error(f"WhatsApp-Media-Download fehlgeschlagen: {e}")
+        log.error(f"WhatsApp-Media-Download fehlgeschlagen (media {media_id}): {e}")
         return None, None
