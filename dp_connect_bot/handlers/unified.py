@@ -726,7 +726,14 @@ def unified_handle_callback(chat_id, callback_data, channel="telegram"):
     elif callback_data.startswith("cb_"):
         return _handle_callback_request(session, chat_id, callback_data)
 
-    return BotResponse(is_silent=True)
+    # Unbekannter/veralteter Button — z.B. aus einer aelteren WhatsApp-Nachricht, deren
+    # Flow es nach einem Deploy nicht mehr gibt. NICHT stumm schlucken: der Kunde hat
+    # bewusst etwas angetippt und erwartet eine Reaktion; Stille wirkt wie ein Bug.
+    log.info(f"[{channel}:{chat_id}] Unbekanntes Callback ignoriert: {callback_data!r}")
+    return BotResponse(
+        text="Hoppla, dieser Knopf ist gerade nicht mehr aktiv. 🙂 Sag mir einfach, was du brauchst — z.B. eine Marke oder Sorte, dann geht's weiter.",
+        answer_callback_text="Nicht mehr aktiv",
+    )
 
 
 def _handle_flavor_selection(session, chat_id, callback_data):
@@ -735,7 +742,12 @@ def _handle_flavor_selection(session, chat_id, callback_data):
     product = cache.get_product_by_id(product_id)
 
     if not product:
-        return BotResponse(answer_callback_text="Produkt nicht gefunden")
+        # Veralteter Sorten-Button (Produkt seit Anzeige entfernt). answer_callback_text
+        # ist NUR Telegram → auf WhatsApp saehe der Kunde sonst NICHTS. Sichtbarer Text.
+        return BotResponse(
+            text="Diese Sorte ist gerade nicht mehr verfügbar. 😕 Sag mir einfach, welche andere Sorte oder Marke du möchtest!",
+            answer_callback_text="Nicht mehr verfügbar",
+        )
 
     name = get_variant_display_name(product)
     price = format_price_de(product.get("price"))
@@ -781,7 +793,11 @@ def _handle_quantity_selection(session, chat_id, callback_data):
 
     product = cache.get_product_by_id(product_id)
     if not product:
-        return BotResponse(answer_callback_text="Nicht mehr verfügbar")
+        # Veralteter Mengen-Button (Produkt weg) → auf WhatsApp sonst stumm.
+        return BotResponse(
+            text="Das Produkt ist gerade nicht mehr verfügbar. 😕 Sag mir einfach, was du stattdessen brauchst!",
+            answer_callback_text="Nicht mehr verfügbar",
+        )
 
     name = get_variant_display_name(product)
     price = product.get("price", "")
@@ -872,7 +888,11 @@ def _handle_custom_quantity(session, chat_id, callback_data):
     product = cache.get_product_by_id(product_id)
 
     if not product:
-        return BotResponse(answer_callback_text="Produkt nicht gefunden")
+        # Veralteter Button (Produkt weg) → auf WhatsApp sonst stumm.
+        return BotResponse(
+            text="Das Produkt ist gerade nicht mehr verfügbar. 😕 Was darf ich dir stattdessen einpacken?",
+            answer_callback_text="Nicht mehr verfügbar",
+        )
 
     name = get_variant_display_name(product)
     brand = product.get("brand", "")
