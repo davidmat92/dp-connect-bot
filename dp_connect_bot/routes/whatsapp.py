@@ -145,10 +145,22 @@ def whatsapp_webhook():
                         log.info(f"[WA:{phone}] Duplikat-Webhook uebersprungen (msg {msg.get('id')})")
                         continue
 
-                    # Typen, die der Bot NICHT verarbeitet (Sticker, Reaktion, Standort,
-                    # Kontakt, …) → still ueberspringen OHNE "tippt..." — sonst sieht der
-                    # Kunde "tippt..." und es kommt nie eine Antwort.
-                    if msg.get("type") not in ("text", "interactive", "audio", "image"):
+                    # Typen, die der Bot NICHT verarbeitet → ohne "tippt..." behandeln
+                    # (sonst sieht der Kunde "tippt..." und es kommt nie eine Antwort).
+                    mtype = msg.get("type")
+                    if mtype not in ("text", "interactive", "audio", "image"):
+                        # Sticker/Reaktion → bewusst still (darauf antwortet man nicht).
+                        # Aber AKTIV geschickter, nicht lesbarer Inhalt (Video — z.B. vom
+                        # Regal! —, Dokument, Standort, Kontakt) → kurz auf die nutzbaren
+                        # Wege lenken, statt den Kunden ins Leere laufen zu lassen. Die
+                        # msg-id ist oben bereits dedupt → kein Doppel-Hinweis bei Retry.
+                        if mtype in ("video", "document", "location", "contacts"):
+                            adapter._send_message(
+                                phone,
+                                "Das kann ich hier leider nicht direkt auswerten. 🙂 Schick mir einfach "
+                                "Text, eine *Sprachnachricht* oder ein *Foto* (z.B. von deinem Regal) — "
+                                "dann helfe ich dir sofort weiter!",
+                            )
                         continue
                     # Verarbeitbare Nachricht → blaue Haken + "tippt..." sofort anzeigen
                     adapter.mark_read_typing(msg.get("id"))
