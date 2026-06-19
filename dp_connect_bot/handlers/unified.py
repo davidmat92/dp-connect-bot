@@ -508,18 +508,31 @@ def unified_handle_callback(chat_id, callback_data, channel="telegram"):
         pid = callback_data.split("_", 1)[1]
         product = cache.get_product_by_id(pid)
         variations = cache.get_variations_available(pid)
-        session_manager.save(chat_id, session)
         if not product or not variations:
+            session_manager.save(chat_id, session)
             return BotResponse(text="Sag mir einfach den Namen der Sorte, die du suchst — dann pack ich sie ein! 🙂",
                                answer_callback_text="Sorte tippen")
         pname = get_variant_display_name(product) or product.get("title", "das Produkt")
         examples = ", ".join(get_variant_display_name(v) for v in variations[:3] if get_variant_display_name(v))
         ex = f" (z.B. {examples})" if examples else ""
-        return BotResponse(
-            text=(f"Bei *{pname}* haben wir **{len(variations)} Sorten** — zu viele für die Liste! 😅\n\n"
-                  f"Tippe einfach den Namen deiner Sorte{ex} und die Menge, dann pack ich sie dir ein. 👍"),
-            answer_callback_text="Sorte tippen",
-        )
+        resp_text = (f"Bei *{pname}* haben wir **{len(variations)} Sorten** — zu viele für die Liste! 😅\n\n"
+                     f"Tippe einfach den Namen deiner Sorte{ex} und die Menge, dann pack ich sie dir ein. 👍")
+        # KONTEXT-ANKER in die Gespraechs-Historie: Ohne das ist die KI beim naechsten
+        # Text ("Blaubeere") BLIND dafuer, dass es eine Sorte GENAU dieses Produkts sein
+        # soll → sie koennte global irgendeine Blaubeere-Variante eines anderen Produkts
+        # finden. Wir legen Produkt-Anker + die echte Sorten-Liste als [Bracket]-Marker
+        # ab (gleiche Konvention wie "[Button geklickt: ...]" beim Mengen-Klick).
+        avail = ", ".join(n for n in (get_variant_display_name(v) for v in variations) if n)
+        session.setdefault("conversation", []).append({
+            "role": "user",
+            "content": (f"[Aktion: 'weitere Sorten' bei {pname} (Artikel {pid}) angetippt. Die NAECHSTE "
+                        f"Nachricht des Kunden ist ein Geschmacksname GENAU zu diesem Produkt — ordne ihn "
+                        f"ausschliesslich diesem Artikel zu (kein anderes Produkt) und leg die passende "
+                        f"Variante in den Warenkorb. Verfuegbare Sorten: {avail[:1500]}]"),
+        })
+        session["conversation"].append({"role": "assistant", "content": resp_text})
+        session_manager.save(chat_id, session)
+        return BotResponse(text=resp_text, answer_callback_text="Sorte tippen")
 
     if callback_data == "mode_order":
         session["mode"] = "order"
