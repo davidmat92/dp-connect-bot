@@ -384,6 +384,13 @@ class WhatsAppAdapter(ChannelAdapter):
 
         quantities = quantities[:10]
 
+        # Keine gueltige Menge (z.B. Restbestand < VPE/Mindestbestellung) → KEINE
+        # leere Liste bauen: eine interactive-Liste mit 0 Zeilen lehnt Meta mit 400
+        # ab. None → der Kunde bekommt die "Wie viele?"-Textfrage und kann tippen;
+        # der Add-Pfad meldet dann sauber "nur noch X, Mindestbestellung Y".
+        if not quantities:
+            return None
+
         rows = []
         for qty in quantities:
             desc = ""
