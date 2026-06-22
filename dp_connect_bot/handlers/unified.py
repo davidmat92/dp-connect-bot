@@ -28,7 +28,7 @@ from dp_connect_bot.handlers.commands import (
 from dp_connect_bot.handlers.support import handle_support_step, handle_support_message, handle_login_email
 from dp_connect_bot.handlers.cart import (
     handle_checkout, handle_cart_view, handle_reorder,
-    handle_browse, handle_pending_quantity,
+    handle_browse, handle_pending_quantity, extract_quantity_answer,
 )
 from dp_connect_bot.handlers.mode import (
     detect_mode, handle_whatsapp_mode_choice, is_human_mode,
@@ -307,8 +307,11 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
         )
 
     # --- Pending selection (manual quantity input) ---
+    # Mengen-Antwort robust lesen: nicht nur "50", sondern auch "50 stück", "50x",
+    # "ca. 50". Eine Frage mit eingebetteter Zahl ("habt ihr elf bar 600?") liefert
+    # None → faellt korrekt durch zur KI (kapert NICHT die Mengen-Eingabe).
     pending = session.get("pending_selection")
-    if pending and stripped.isdigit():
+    if pending and extract_quantity_answer(stripped) is not None:
         resp = handle_pending_quantity(session, stripped)
         session_manager.save(chat_id, session)
         return resp

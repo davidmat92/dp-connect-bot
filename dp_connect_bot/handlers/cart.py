@@ -2,6 +2,8 @@
 Cart handlers – checkout, cart display, reorder, pending quantity.
 """
 
+import re
+
 from dp_connect_bot.config import CHECKOUT_WORDS, CART_DISPLAY_WORDS, REORDER_TRIGGERS, CATEGORY_MAP, BROWSE_TRIGGERS, log
 from dp_connect_bot.models.response import BotResponse, Keyboard, KeyboardType, Button
 from dp_connect_bot.services.cart_processing import format_cart, generate_checkout_url, _apply_staffel_price
@@ -166,6 +168,36 @@ def handle_browse(session, channel):
         )
 
 
+# Mengen-Einheit direkt nach einer Zahl ("50 stück", "50x", "50stk", "30 mal").
+_QTY_UNIT_RE = re.compile(r'(\d+)\s*(?:stück|stueck|stck|stk|st|mal|x|pcs?)\b')
+# Füllwörter, die eine Mengen-Antwort umrahmen ("ca. 50", "so 100 bitte").
+_QTY_FILLER_RE = re.compile(r'\b(?:ca|circa|etwa|ungefähr|ungefaehr|rund|knapp|gut|so|bitte|insgesamt|gesamt|mir|machen?|nimm|gib)\b')
+
+
+def extract_quantity_answer(text):
+    """Liest eine Mengen-Antwort robust: '50' / '50 stück' / '50x' / '50stk' /
+    'ca. 50' / 'so 100 bitte' → die Zahl (int). Gibt None zurück, wenn der Text
+    KEINE eindeutige Mengen-Antwort ist:
+    - eine Frage mit eingebetteter Zahl ('habt ihr elf bar 600?') → None (zu lang),
+    - mehrdeutige Gebinde ('2 kartons', '3 pakete') → None (VPE/KI entscheidet),
+    - Wortzahlen ('fünfzig') → None.
+    Bewusst ENG, damit pending_selection nie eine Nicht-Mengen-Nachricht kapert."""
+    t = (text or "").strip().lower()
+    if not t:
+        return None
+    if t.isdigit():
+        return int(t)
+    if len(t.split()) > 4:           # echte Mengen-Antworten sind kurz
+        return None
+    t = re.sub(r'[.,~!?]', ' ', t)
+    t = _QTY_UNIT_RE.sub(r'\1', t)   # '50 stück'/'50x'/'50stk' → '50'
+    t = _QTY_FILLER_RE.sub(' ', t)   # ca/etwa/so/bitte/… raus
+    tokens = t.split()
+    if len(tokens) == 1 and tokens[0].isdigit():
+        return int(tokens[0])
+    return None
+
+
 def handle_pending_quantity(session, text):
     """Handle manual quantity input when pending_selection is set."""
     session.setdefault("cart", [])  # defensiv (beschaedigte Session)
@@ -174,12 +206,17 @@ def handle_pending_quantity(session, text):
     if not pid:
         session["pending_selection"] = None
         return BotResponse(text="Sag mir einfach nochmal kurz, welches Produkt und welche Menge du brauchst! 😊")
-    quantity = int(text)
+    parsed = extract_quantity_answer(text)
+    quantity = parsed if parsed is not None else 0
     vpe_num = int(pending.get("vpe", 1))
     name = pending.get("name", "")
     brand = pending.get("brand", "")
     price = pending.get("price", "")
     label = f"{brand} - {name}".strip(" -")
+    # Menge 0/ungültig (z.B. "0" getippt) → NICHT 0 Stück einpacken, sondern
+    # freundlich nachfragen. pending_selection bleibt bestehen.
+    if quantity <= 0:
+        return BotResponse(text=f"Wie viele *{label}* sollen's denn sein? Sag mir einfach eine Zahl ab 1. 😊")
 
     round_hint = ""
     if vpe_num > 1 and quantity % vpe_num != 0:
