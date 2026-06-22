@@ -206,6 +206,15 @@ def handle_pending_quantity(session, text):
     if not pid:
         session["pending_selection"] = None
         return BotResponse(text="Sag mir einfach nochmal kurz, welches Produkt und welche Menge du brauchst! 😊")
+    # defense-in-depth: ein variables Eltern-Produkt darf nicht über die manuelle
+    # Mengen-Eingabe in den Korb (Checkout bräuchte eine Variante) → Sorten-Auswahl.
+    _p = cache.get_product_by_id(pid)
+    if _p and _p.get("produkt_typ") == "variable":
+        session["pending_selection"] = None
+        return BotResponse(
+            text=f"Von *{_p.get('title','dem Produkt')}* brauche ich noch die genaue Sorte. 👇",
+            keyboards=[Keyboard(type=KeyboardType.FLAVORS, parent_id=pid)],
+        )
     parsed = extract_quantity_answer(text)
     quantity = parsed if parsed is not None else 0
     vpe_num = int(pending.get("vpe", 1))

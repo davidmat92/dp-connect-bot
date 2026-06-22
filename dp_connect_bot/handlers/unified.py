@@ -801,6 +801,14 @@ def _handle_quantity_selection(session, chat_id, callback_data):
             text="Das Produkt ist gerade nicht mehr verfügbar. 😕 Sag mir einfach, was du stattdessen brauchst!",
             answer_callback_text="Nicht mehr verfügbar",
         )
+    if product.get("produkt_typ") == "variable":
+        # Mengen-Button auf einem variablen Eltern-Produkt (sollte nicht passieren,
+        # aber defense-in-depth) → es braucht eine Sorte, nicht den Parent.
+        return BotResponse(
+            text=f"Von *{get_variant_display_name(product)}* brauche ich noch die genaue Sorte. 👇",
+            keyboards=[Keyboard(type=KeyboardType.FLAVORS, parent_id=product_id)],
+            answer_callback_text="Sorte wählen",
+        )
 
     name = get_variant_display_name(product)
     price = product.get("price", "")
