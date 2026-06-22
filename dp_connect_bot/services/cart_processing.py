@@ -99,6 +99,19 @@ def process_cart_actions(session, ai_response):
                     continue
                 product_check = cache.get_product_by_id(pid)
 
+                # Defense-in-depth: ein VARIABLES Elternprodukt (z.B. "Elf Bar 600"
+                # mit vielen Sorten) ist NICHT bestellbar — WooCommerce braucht eine
+                # konkrete Variante. Will die KI doch die Parent-ID einpacken, NICHT
+                # kaputt in den Korb legen (Checkout/WC-Order wuerde scheitern), sondern
+                # die Sorten-Auswahl anbieten. Wie der Verifizierungs-Gate: Korrektheit
+                # haengt nicht am Wohlverhalten des Modells.
+                if product_check and product_check.get("produkt_typ") == "variable":
+                    log.warning(f"Cart add: variables Elternprodukt {pid} ({product_check.get('title','')}) abgefangen → Sorten-Auswahl")
+                    keyboards.append(build_flavor_keyboard(pid))
+                    clean += (f"\n\n👇 Welche Sorte von *{product_check.get('title','dem Produkt')}* "
+                              "darf's sein? Sag mir die Sorte (und Menge), dann pack ich sie ein.")
+                    continue
+
                 # VPE enforcement: round up quantity to next VPE multiple
                 if product_check:
                     try:
