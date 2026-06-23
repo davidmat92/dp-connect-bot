@@ -229,7 +229,16 @@ def admin_reply():
             wa = WhatsAppAdapter()
             sent = wa._send_message(raw_id, f"\U0001f464 {message}")
             if not sent:
-                log.error(f"[admin_reply] WhatsApp send failed for {raw_id}")
+                log.error(f"[admin_reply] WhatsApp send failed for {raw_id} (code {getattr(wa, '_last_error_code', None)})")
+                # 131047/470 = 24h-Kundenservice-Fenster zu: Meta laesst keinen
+                # Freitext mehr zu. Davide das KLAR sagen, statt generischem Fehler —
+                # sonst raetselt er, warum seine Antwort nicht ankommt.
+                if getattr(wa, "_last_error_code", None) in (131047, 470):
+                    return jsonify(ok=False, error=(
+                        "Der Kunde hat seit über 24 Stunden nicht geschrieben — WhatsApp "
+                        "lässt dann keine freie Nachricht mehr zu (24h-Fenster). Du erreichst "
+                        "ihn erst wieder, wenn er dir schreibt, oder über eine genehmigte Vorlage."
+                    ), code=getattr(wa, "_last_error_code", None)), 409
                 return jsonify(ok=False, error="WhatsApp-Nachricht konnte nicht gesendet werden"), 502
             s["conversation"].append({"role": "assistant", "content": f"[ADMIN] {message}"})
             session_manager.save(chat_id, s)

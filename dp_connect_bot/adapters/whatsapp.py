@@ -147,6 +147,11 @@ class WhatsAppAdapter(ChannelAdapter):
 
     def _send_message(self, phone, text, buttons=None, list_menu=None):
         """Send a message via WhatsApp Cloud API."""
+        # Letzter Meta-Fehlercode dieses Sends (z.B. 131047/470 = 24h-Fenster zu).
+        # Aufrufer wie /admin/reply koennen daraus eine KLARE Fehlermeldung bauen.
+        # Pro Aufruf-Instanz gespeichert → keine Races (admin_reply nutzt eine eigene
+        # frische WhatsAppAdapter-Instanz, nicht die geteilte des Webhooks).
+        self._last_error_code = None
         if not WHATSAPP_TOKEN or not WHATSAPP_PHONE_ID:
             log.warning("WhatsApp nicht konfiguriert")
             return False
@@ -224,14 +229,15 @@ class WhatsAppAdapter(ChannelAdapter):
             )
             if not resp.ok:
                 log.error(f"WhatsApp send error: {resp.text}")
+                try:
+                    self._last_error_code = resp.json().get("error", {}).get("code")
+                except Exception:
+                    self._last_error_code = None
                 # Interaktive Nachricht von Meta abgelehnt (z.B. Param-Fehler 100:
                 # Titel/Body zu lang, zu viele Rows) → als REINEN TEXT nachliefern,
                 # damit der Kunde wenigstens die Antwort bekommt statt nichts.
                 if payload.get("type") == "interactive":
-                    try:
-                        err_code = resp.json().get("error", {}).get("code")
-                    except Exception:
-                        err_code = None
+                    err_code = self._last_error_code
                     if err_code == 100 or resp.status_code == 400:
                         try:
                             r2 = requests.post(
