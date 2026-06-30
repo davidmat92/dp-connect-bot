@@ -62,6 +62,11 @@ SELF_SERVICE_KEYWORDS = {
     "bestellhistorie", "meine rechnung", "rechnung schicken",
     "schick mir die rechnung", "schick mir meine rechnung", "rechnung zur",
     "rechnung von", "rechnung haben", "bestellstatus", "was hab ich bestellt",
+    # Weitere natürliche Rechnungs-Formulierungen (sonst landet "meine letzte
+    # rechnung geben" im Support-Bot, der kein get_invoice hat):
+    "die rechnung", "letzte rechnung", "letzten rechnung", "rechnung geben",
+    "rechnung bekommen", "rechnung kriegen", "rechnung runter", "rechnung herunter",
+    "rechnung als pdf", "rechnung bitte", "brauche meine rechnung", "brauche die rechnung",
     "was habe ich bestellt", "offene rechnung", "offene rechnungen",
     "offene posten", "was muss ich noch zahlen", "was schulde ich",
     "meine rechnungen", "welche rechnungen",
@@ -145,14 +150,16 @@ def detect_mode(session, text, channel):
 
     lower = text.strip().lower()
 
-    # Verifizierte Kunden mit eigenem Bestell-/Rechnungs-Anliegen → Self-Service
-    # im Order-Modus (Tools lookup_my_orders/get_invoice), NICHT Support.
-    # Sonst wuerde "schick mir die Rechnung" den Support-Bot nach E-Mail
-    # fragen, obwohl der Kunde laengst verifiziert ist.
-    if session.get("verified"):
-        if any(kw in lower for kw in SELF_SERVICE_KEYWORDS):
-            session["mode"] = "order"
-            return None
+    # Eigenes Bestell-/Rechnungs-/Tracking-Anliegen ("meine Rechnung", "letzte
+    # Bestellung", "wo ist mein Paket") → IMMER Order-Modus — auch UNVERIFIZIERT.
+    # Nur dort liegen die Self-Service-Tools (lookup_my_orders/get_invoice/
+    # track_my_order). Der Order-Bot liefert es verifizierten Kunden direkt und
+    # verifiziert unverifizierte kurz (E-Mail→Code) und liefert es DANN hier.
+    # WICHTIG: Der Support-Bot hat KEIN get_invoice — landete eine Rechnungs-Anfrage
+    # dort (weil "rechnung" auch ein SUPPORT_KEYWORD ist), wimmelte er nur ab.
+    if any(kw in lower for kw in SELF_SERVICE_KEYWORDS):
+        session["mode"] = "order"
+        return None
 
     # Detect support signals (check first – support takes priority over order)
     support_signals = any(kw in lower for kw in SUPPORT_KEYWORDS)
