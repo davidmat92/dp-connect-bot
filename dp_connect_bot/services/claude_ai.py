@@ -411,6 +411,10 @@ def _execute_order_tool(tool_name, tool_input, session=None):
             order_id = str(tool_input.get("order_id", "")).strip() or None
             res = chat_order.get_invoice_link(customer_id, order_id)
             if res.get("ok") and res.get("url"):
+                # Den vom tools-Backend gelieferten Link mitloggen — so ist bei einem
+                # "Link führt zu Fehler"-Report sofort sichtbar, WELCHE URL tools liefert
+                # (der Bot reicht sie nur unverändert weiter).
+                log.info(f"[invoice] Kunde {customer_id} Bestellung #{res.get('number')} → tools-URL: {res['url']}")
                 return (f"RECHNUNG zu Bestellung #{res.get('number')} "
                         f"(Rechnungsnr. {res.get('invoice_number', '')}): {res['url']}\n"
                         "Gib dem Kunden diesen Link — er ist sicher und zeitlich begrenzt gueltig.")
