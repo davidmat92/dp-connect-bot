@@ -5,11 +5,18 @@ Supports both order mode (simple text) and support mode (tool use).
 
 import json
 import os
+import re
 import time
 import requests
 
 from dp_connect_bot.config import ANTHROPIC_API_KEY, CLAUDE_MODEL, log
 from dp_connect_bot.utils.formatting import parse_price
+
+# Rechnungslinks (langer Zufalls-Hash) NIE vom Modell ausgeben lassen — LLMs
+# verändern solche Tokens beim Abtippen → kaputte URL. Wir entfernen jede vom
+# Modell geschriebene rechnung.dpconnect.de-URL und haengen den EXAKTEN Link aus
+# dem Tool-Ergebnis im Code an (siehe get_invoice + call_claude).
+_INVOICE_URL_RE = re.compile(r'https?://rechnung\.dpconnect\.de/\S+', re.IGNORECASE)
 
 
 # ============================================================
@@ -411,13 +418,21 @@ def _execute_order_tool(tool_name, tool_input, session=None):
             order_id = str(tool_input.get("order_id", "")).strip() or None
             res = chat_order.get_invoice_link(customer_id, order_id)
             if res.get("ok") and res.get("url"):
-                # Den vom tools-Backend gelieferten Link mitloggen — so ist bei einem
-                # "Link führt zu Fehler"-Report sofort sichtbar, WELCHE URL tools liefert
-                # (der Bot reicht sie nur unverändert weiter).
                 log.info(f"[invoice] Kunde {customer_id} Bestellung #{res.get('number')} → tools-URL: {res['url']}")
+                # Link NICHT ins Tool-Ergebnis geben, das das Modell sieht — sonst tippt
+                # es den Hash ab und korrumpiert ihn. Exakt im Session-State zwischen-
+                # speichern; call_claude haengt ihn nach der Antwort 1:1 an.
+                if session is not None:
+                    session["_pending_invoice"] = {
+                        "url": res["url"],
+                        "number": res.get("number"),
+                        "invoice_number": res.get("invoice_number", ""),
+                    }
                 return (f"RECHNUNG zu Bestellung #{res.get('number')} "
-                        f"(Rechnungsnr. {res.get('invoice_number', '')}): {res['url']}\n"
-                        "Gib dem Kunden diesen Link — er ist sicher und zeitlich begrenzt gueltig.")
+                        f"(Rechnungsnr. {res.get('invoice_number', '')}) ist verfügbar. "
+                        "WICHTIG: Bestaetige dem Kunden NUR kurz (z.B. 'Hier ist deine Rechnung "
+                        "zu Bestellung #X 📄') und schreibe SELBST KEINE URL/keinen Link — das "
+                        "System haengt den korrekten Rechnungslink automatisch an.")
             same = "Diese Bestellnummer gibt es nicht oder gehoert nicht zu diesem Konto."
             reasons = {
                 "no_orders": "Der Kunde hat noch keine Bestellungen.",
@@ -649,6 +664,21 @@ def call_claude(session, user_message, product_context="", wc_cart=None):
         if not ai_text:
             ai_text = ("Das hat gerade etwas länger gedauert 😅 Sag mir nochmal kurz, "
                        "welches Produkt du genau meinst — dann geht's sofort!")
+
+        # --- Rechnungslink deterministisch behandeln ---
+        # 1) Jede vom Modell selbst geschriebene rechnung.dpconnect.de-URL entfernen
+        #    (sie ist potenziell ein verfälschter Hash → kaputter Link).
+        # 2) Falls diese Runde eine Rechnung abgerufen wurde, den EXAKTEN Link aus dem
+        #    Tool-Ergebnis 1:1 anhaengen (kommt aus dem Code, nicht aus dem Modell).
+        inv = session.pop("_pending_invoice", None)
+        if _INVOICE_URL_RE.search(ai_text):
+            ai_text = _INVOICE_URL_RE.sub("", ai_text)
+            ai_text = re.sub(r"[ \t]{2,}", " ", ai_text).strip()
+        if inv and inv.get("url"):
+            if not ai_text.strip():
+                _nr = inv.get("number")
+                ai_text = f"Hier ist deine Rechnung{f' zu Bestellung #{_nr}' if _nr else ''} 📄"
+            ai_text = (ai_text.rstrip() + f"\n\n👉 {inv['url']}").strip()
 
         session["conversation"].append({"role": "user", "content": user_message})
         session["conversation"].append({"role": "assistant", "content": ai_text})
