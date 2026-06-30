@@ -896,13 +896,31 @@ def call_claude_support(session, user_message):
     messages.append({"role": "user", "content": user_message})
     messages = _sanitize_messages(messages)
 
+    # Verifizierten Kunden + Daten in den Support-Kontext geben — sonst fragt der
+    # Support-Bot nach Name/E-Mail, obwohl der Kunde (z.B. per WhatsApp-Nummer) längst
+    # verifiziert ist und alles im System steht.
+    v = session.get("verified") or {}
+    if v.get("customer_id"):
+        known = ", ".join(f"{lbl}: {v[key]}" for key, lbl in
+                          (("name", "Name"), ("firma", "Firma"), ("email", "E-Mail")) if v.get(key))
+        support_system = SUPPORT_PROMPT + (
+            f"\n\n[AKTUELLER KUNDE — VERIFIZIERTER B2B-KUNDE. Bekannt: {known or 'Daten im System hinterlegt'}. "
+            "Die Identität ist bereits geprüft — FRAG NICHT nach Name oder E-Mail und verlange KEINE "
+            "E-Mail-Verifizierung mehr. Bei Weiterleitung/Eskalation die bekannten Daten direkt nutzen.]"
+        )
+    else:
+        support_system = SUPPORT_PROMPT + (
+            "\n\n[AKTUELLER KUNDE: NICHT verifiziert. Für eine Weiterleitung ggf. EINMAL kurz "
+            "Name/E-Mail erfragen — danach direkt eskalieren, nicht mehrfach nachfragen.]"
+        )
+
     escalated = False
     escalation_info = None
     max_tool_rounds = 5  # Safety limit
 
     try:
         # First API call with tools
-        data = _api_call(SUPPORT_PROMPT, messages, tools=SUPPORT_TOOLS)
+        data = _api_call(support_system, messages, tools=SUPPORT_TOOLS)
         if not data:
             return "Bot ist noch nicht konfiguriert (API Key fehlt). Bitte Admin kontaktieren.", False, None
 
@@ -942,7 +960,7 @@ def call_claude_support(session, user_message):
             messages.append({"role": "assistant", "content": assistant_content})
             messages.append({"role": "user", "content": tool_results})
 
-            data = _api_call(SUPPORT_PROMPT, messages, tools=SUPPORT_TOOLS)
+            data = _api_call(support_system, messages, tools=SUPPORT_TOOLS)
             if not data:
                 break
 
