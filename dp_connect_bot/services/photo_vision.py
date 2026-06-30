@@ -17,8 +17,8 @@ _MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 _PHOTO_PROMPT = (
     "Ein B2B-Kunde eines Vape-/Snack-Grosshandels schickt dieses Foto und will "
-    "wissen, ob wir das Produkt fuehren. Analysiere die Produktverpackung(en):\n"
-    "Format (eine Zeile pro erkanntem Produkt, max 3 Produkte, Deutsch):\n"
+    "wissen, ob wir das/die Produkt(e) fuehren. Analysiere die Produktverpackung(en):\n"
+    "Format (eine Zeile pro erkanntem Produkt, bis zu 5 Produkte, Deutsch):\n"
     "PRODUKT: Marke=<Markenname falls lesbar>; Aufschrift=<Text auf der Verpackung, "
     "z.B. Produktname/Geschmack/Staerke>; Typ=<Vape/Liquid/Pods/Tabak/Snack/Drink/...>; "
     "Motive=<auffaellige Bildmotive>; Farben=<dominante Farben>\n"
@@ -61,6 +61,46 @@ def _is_shelf_request(caption: str) -> bool:
         return False
     low = caption.lower()
     return any(kw in low for kw in _SHELF_KEYWORDS)
+
+
+# Order-Foto: Der Kunde fotografiert eine BESTELLUNG/einen Warenstapel und will
+# "genau so eine Bestellung". Dann ALLE Produkte erfassen UND die Menge je Produkt
+# schaetzen (Kartons/Stapel zaehlen) — und als konkreten Bestell-Vorschlag anbieten.
+_ORDER_PROMPT = (
+    "Ein B2B-Kunde (Kiosk/Shop) eines Vape-/Snack-Grosshandels schickt dieses Foto "
+    "und will GENAU SO eine Bestellung aufgeben ('ich brauche so eine Bestellung'). "
+    "Erfasse das Foto SO VOLLSTAENDIG WIE MOEGLICH: Zaehle JEDES erkennbare Produkt auf "
+    "(so viele wie du sicher lesen kannst — AUF KEINEN FALL nur 3) und SCHAETZE die "
+    "Menge je Produkt anhand der sichtbaren Packungen/Stangen/Kartons/Stapel. "
+    "Eine Zeile pro Produkt, Deutsch:\n"
+    "PRODUKT: Marke=<Markenname>; Aufschrift=<Produktname/Geschmack/Staerke, so genau wie "
+    "lesbar>; Typ=<Vape/Liquid/Pods/Tabak/Snack/Drink/...>; Menge=<geschaetzte Stueckzahl, "
+    "z.B. 20; bei Unsicherheit grob schaetzen und mit ~ markieren>\n"
+    "Wichtig: Marke + Geschmack + Staerke (z.B. mg, sichtbar auf Karton/Packung) so exakt "
+    "wie moeglich lesen — entscheidend fuer die Bestellung. Zaehle die sichtbaren "
+    "Einheiten/Kartons mit, um die Menge zu schaetzen. Lieber EIN Produkt mehr aufzaehlen "
+    "als eins zu uebersehen. Wenn KEINE Produkte erkennbar: 'KEIN_PRODUKT: <was zu sehen "
+    "ist, 1 Satz>'. Keine Preis-Spekulation."
+)
+
+# Caption-Hinweise "ich will GENAU SO eine Bestellung" (nicht nur 'habt ihr das?').
+# "nachbestellen" liegt bewusst NICHT hier — das faengt schon der Regal-Scan ab.
+_ORDER_KEYWORDS = (
+    "so eine bestellung", "solche bestellung", "diese bestellung", "so eine bestllung",
+    "so was", "sowas", "so etwas", "das gleiche", "das selbe", "dasselbe", "genau das",
+    "genauso", "genau so", "brauche das", "brauche so", "bräuchte", "braeuchte",
+    "hätte gern", "haette gern", "möchte das", "moechte das", "will das", "das nochmal",
+    "nochmal das", "alles davon", "wie hier", "wie auf dem bild", "bestellen", "bestellung",
+)
+
+
+def _is_order_request(caption: str) -> bool:
+    """True, wenn der Kunde GENAU SO eine Bestellung will → ALLE Produkte + geschaetzte
+    Mengen erfassen (statt nur 'habt ihr das?'). Regal-Scan hat Vorrang."""
+    if not caption or _is_shelf_request(caption):
+        return False
+    low = caption.lower()
+    return any(kw in low for kw in _ORDER_KEYWORDS)
 
 
 def _downscale_for_vision(image_bytes: bytes):
@@ -106,8 +146,16 @@ def describe_photo(image_bytes: bytes, media_type: str = "image/jpeg", caption: 
         image_bytes, media_type = scaled, "image/jpeg"
         log.info(f"Kundenfoto auf {len(image_bytes)} bytes verkleinert (war zu gross)")
     shelf = _is_shelf_request(caption)
-    prompt = _SHELF_PROMPT if shelf else _PHOTO_PROMPT
-    max_tokens = 900 if shelf else 300
+    order = _is_order_request(caption)  # hat shelf-Vorrang schon berücksichtigt
+    # Regal-Scan UND Order-Foto brauchen viel Budget (viele Produkte + Mengen);
+    # das einfache "habt ihr das?" bleibt knapp.
+    if shelf:
+        prompt, max_tokens, mode = _SHELF_PROMPT, 900, "Regal-Scan"
+    elif order:
+        prompt, max_tokens, mode = _ORDER_PROMPT, 1000, "Order-Foto"
+    else:
+        prompt, max_tokens, mode = _PHOTO_PROMPT, 300, "Einzelprodukt"
+    thorough = shelf or order
     try:
         resp = requests.post(
             "https://api.anthropic.com/v1/messages",
@@ -131,12 +179,12 @@ def describe_photo(image_bytes: bytes, media_type: str = "image/jpeg", caption: 
                     ],
                 }],
             },
-            timeout=60 if shelf else 45,
+            timeout=60 if thorough else 45,
         )
         resp.raise_for_status()
         data = resp.json()
         desc = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text").strip()
-        log.info(f"Kundenfoto analysiert ({'Regal-Scan' if shelf else 'Einzelprodukt'}): {desc[:120]}")
+        log.info(f"Kundenfoto analysiert ({mode}): {desc[:120]}")
         return desc
     except Exception as e:
         log.error(f"Foto-Analyse fehlgeschlagen: {e}")
@@ -161,6 +209,22 @@ def build_photo_message(description: str, caption: str = "") -> str:
             "ich nachbestellen soll. Produkte, die wir NICHT fuehren, ehrlich weglassen "
             "bzw. kurz als 'haben wir nicht' kennzeichnen — nichts erfinden. Erst auf "
             "Bestaetigung in den Warenkorb legen.]"
+        )
+        return "\n".join(parts)
+    if _is_order_request(caption):
+        parts = [f"[KUNDE WILL GENAU DIESE BESTELLUNG — Foto-Analyse mit geschaetzten Mengen:]\n{description}"]
+        parts.append(f"[Nachricht des Kunden dazu:] {caption}")
+        parts.append(
+            "[ORDER-FOTO — so vorgehen: Der Kunde moechte GENAU diese Bestellung aufgeben. "
+            "Suche ALLE erkannten Produkte im Katalog (search_products / get_product_variants) "
+            "und nimm die geschaetzten Mengen als KONKRETEN Vorschlag. Liste auf, was du gefunden "
+            "hast — je Produkt MIT der geschaetzten Menge — und frag nur noch kurz zur "
+            "BESTAETIGUNG ('Passt das so, oder soll ich eine Menge anpassen?') statt offen "
+            "'wie viele willst du?'. Sei vollstaendig: lieber ein Produkt mehr aufgreifen. Bei "
+            "Liquids/Pods die Staerke (z.B. mg) gegen die Varianten abgleichen (mehrere passende "
+            "Varianten gebuendelt fragen). Produkte, die wir NICHT fuehren, ehrlich kennzeichnen "
+            "statt zu erfinden. Erst auf Bestaetigung in den Warenkorb. Sei verkaufsfoerdernd und "
+            "biete an, ALLES auf einmal einzupacken.]"
         )
         return "\n".join(parts)
     parts = [f"[KUNDE HAT EIN FOTO GESCHICKT — Bildanalyse:]\n{description}"]
