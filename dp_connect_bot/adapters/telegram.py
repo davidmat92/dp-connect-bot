@@ -53,10 +53,35 @@ class TelegramAdapter(ChannelAdapter):
         if response.text:
             self._send_message(chat_id, response.text, reply_markup=reply_markup)
 
+        # Dokument (z.B. Rechnung) als Datei nachschicken
+        if response.document and response.document.get("url"):
+            doc = response.document
+            ok = self._send_document(chat_id, doc["url"], doc.get("filename", "Dokument.pdf"))
+            if not ok:
+                self._send_message(chat_id, f"{doc.get('fallback_label', '📄')}:\n{doc['url']}")
+
         # Answer callback query if present
         if response.answer_callback_text:
             # This is handled separately in the route
             pass
+
+    def _send_document(self, chat_id, url, filename="Dokument.pdf", caption=""):
+        """Sendet ein Dokument (z.B. Rechnungs-PDF) per URL — Telegram laedt die Datei
+        selbst und stellt sie als Datei zu. True/False."""
+        if not url:
+            return False
+        payload = {"chat_id": chat_id, "document": url}
+        if caption:
+            payload["caption"] = caption
+        try:
+            resp = requests.post(f"{TELEGRAM_API}/sendDocument", json=payload, timeout=20)
+            if not resp.ok:
+                log.error(f"Telegram document send error: {resp.text}")
+                return False
+            return True
+        except Exception as e:
+            log.error(f"Telegram document send exception: {e}")
+            return False
 
     def send_typing(self, chat_id):
         try:

@@ -473,6 +473,18 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
         session[f"anleitung_hint_{session.get('message_count', 0)}"] = True
         clean_text += "\n\n💡 _Tipp: Mit dem Stichwort *Anleitung* zeig ich dir alle meine Funktionen._"
 
+    # Rechnung (falls diese Runde abgerufen) als Dokument mitschicken — der Adapter
+    # macht daraus eine PDF-Datei (WhatsApp/Telegram) bzw. einen Link (Webchat).
+    _inv = session.pop("_pending_invoice", None)
+    invoice_document = None
+    if _inv and _inv.get("url"):
+        _nr = _inv.get("invoice_number") or _inv.get("number")
+        invoice_document = {
+            "url": _inv["url"],
+            "filename": f"Rechnung{('-' + str(_nr)) if _nr else ''}.pdf",
+            "fallback_label": "📄 Deine Rechnung",
+        }
+
     session_manager.save(chat_id, session)
 
     return BotResponse(
@@ -481,6 +493,7 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
         wc_actions=wc_actions,
         cart=session.get("cart", []),
         cart_rich=format_cart_rich(session),
+        document=invoice_document,
     )
 
 

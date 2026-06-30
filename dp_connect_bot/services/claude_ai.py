@@ -666,19 +666,18 @@ def call_claude(session, user_message, product_context="", wc_cart=None):
                        "welches Produkt du genau meinst — dann geht's sofort!")
 
         # --- Rechnungslink deterministisch behandeln ---
-        # 1) Jede vom Modell selbst geschriebene rechnung.dpconnect.de-URL entfernen
-        #    (sie ist potenziell ein verfälschter Hash → kaputter Link).
-        # 2) Falls diese Runde eine Rechnung abgerufen wurde, den EXAKTEN Link aus dem
-        #    Tool-Ergebnis 1:1 anhaengen (kommt aus dem Code, nicht aus dem Modell).
-        inv = session.pop("_pending_invoice", None)
+        # Jede vom Modell selbst geschriebene rechnung.dpconnect.de-URL entfernen (sie
+        # ist potenziell ein verfälschter Hash). Den exakten Link NICHT hier in den Text
+        # tippen — er liegt in session['_pending_invoice'] und wird vom Handler als
+        # DOKUMENT (WhatsApp/Telegram) bzw. Link (Webchat) verschickt. Hier nur einen
+        # sauberen Einleitungstext sicherstellen.
+        inv = session.get("_pending_invoice")
         if _INVOICE_URL_RE.search(ai_text):
             ai_text = _INVOICE_URL_RE.sub("", ai_text)
             ai_text = re.sub(r"[ \t]{2,}", " ", ai_text).strip()
-        if inv and inv.get("url"):
-            if not ai_text.strip():
-                _nr = inv.get("number")
-                ai_text = f"Hier ist deine Rechnung{f' zu Bestellung #{_nr}' if _nr else ''} 📄"
-            ai_text = (ai_text.rstrip() + f"\n\n👉 {inv['url']}").strip()
+        if inv and inv.get("url") and not ai_text.strip():
+            _nr = inv.get("number")
+            ai_text = f"Hier ist deine Rechnung{f' zu Bestellung #{_nr}' if _nr else ''} 📄"
 
         session["conversation"].append({"role": "user", "content": user_message})
         session["conversation"].append({"role": "assistant", "content": ai_text})

@@ -23,11 +23,10 @@ class WhatsAppAdapter(ChannelAdapter):
     def send_response(self, chat_id, response: BotResponse):
         if response.is_silent:
             return
-        # Leerer Text OHNE Keyboard → nichts zu senden. ABER: ein reines Keyboard
-        # (z.B. die KI-Antwort war nur [SHOW_FLAVORS:id] → Text leer) MUSS trotzdem
-        # raus — sonst sieht der WhatsApp-Kunde seine Geschmacks-/Mengenauswahl NIE.
-        # Den fehlenden Body faengt _send_message mit "👇" ab.
-        if not response.text and not response.keyboards:
+        # Leerer Text OHNE Keyboard/Dokument → nichts zu senden. ABER: ein reines
+        # Keyboard (z.B. KI-Antwort war nur [SHOW_FLAVORS:id]) ODER ein reines Dokument
+        # (Rechnung) MUSS trotzdem raus. Den fehlenden Body faengt _send_message mit "👇" ab.
+        if not response.text and not response.keyboards and not response.document:
             return
 
         # Build WhatsApp-specific UI
@@ -84,6 +83,15 @@ class WhatsAppAdapter(ChannelAdapter):
         # Clean markdown for WhatsApp (remove unsupported syntax)
         text = self._clean_text(response.text or "") + text_suffix
         self._send_message(chat_id, text, buttons=buttons, list_menu=list_menu)
+
+        # Dokument (z.B. Rechnung) als PDF-Datei nachschicken
+        if response.document and response.document.get("url"):
+            doc = response.document
+            ok = self._send_document(chat_id, doc["url"], doc.get("filename", "Dokument.pdf"))
+            if not ok:
+                # WhatsApp konnte die Datei nicht laden → Link als Text nachreichen,
+                # damit der Kunde die Rechnung trotzdem bekommt.
+                self._send_message(chat_id, f"{doc.get('fallback_label', '📄')}:\n{doc['url']}")
 
     def send_typing(self, chat_id):
         # WhatsApp Cloud API kennt Typing nur als Reaktion auf eine konkrete
@@ -260,6 +268,29 @@ class WhatsAppAdapter(ChannelAdapter):
             log.error(f"WhatsApp send error: {e}")
             from dp_connect_bot.services.send_queue import enqueue
             enqueue(payload)
+            return False
+
+    def _send_document(self, phone, url, filename="Dokument.pdf", caption=""):
+        """Sendet ein Dokument (z.B. Rechnungs-PDF) per Link — WhatsApp laedt die
+        Datei selbst von der URL und stellt sie als Datei zu. True/False."""
+        if not WHATSAPP_TOKEN or not WHATSAPP_PHONE_ID or not url:
+            return False
+        document = {"link": url, "filename": (filename or "Dokument.pdf")[:240]}
+        if caption:
+            document["caption"] = caption[:1024]
+        payload = {"messaging_product": "whatsapp", "to": phone, "type": "document", "document": document}
+        try:
+            resp = requests.post(
+                f"{WHATSAPP_API}/{WHATSAPP_PHONE_ID}/messages",
+                headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}", "Content-Type": "application/json"},
+                json=payload, timeout=20,
+            )
+            if not resp.ok:
+                log.error(f"WhatsApp document send error: {resp.text}")
+                return False
+            return True
+        except Exception as e:
+            log.error(f"WhatsApp document send exception: {e}")
             return False
 
     def send_template(self, phone, template_name, body_params=None, lang="de"):
