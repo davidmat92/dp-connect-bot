@@ -60,25 +60,41 @@ def send_pushover(title, message, priority=0, url=None, url_title=None):
 def notify_escalation(chat_id, channel, reason, collected_info, customer_name=None):
     """Send escalation notification to Davide.
 
-    Called when the bot hands off a conversation to a human.
+    Called when the bot hands off a conversation to a human (Support-Eskalation
+    ODER Rückruf-/Kontakt-Wunsch). Enthaelt die Telefonnummer + einen Ein-Tipp-Link,
+    damit Davide direkt aus der Push heraus antworten/zurueckrufen kann.
     """
     ch_label = {"telegram": "Telegram", "whatsapp": "WhatsApp", "web": "Webchat"}.get(channel, channel)
     name = customer_name or chat_id[:16]
+
+    # Telefonnummer ableiten (WhatsApp: chat_id = "wa_<nummer>") → Rückruf/Anschreiben
+    phone = ""
+    if channel == "whatsapp" and str(chat_id).startswith("wa_"):
+        phone = str(chat_id)[3:]
 
     title = f"Support-Eskalation ({ch_label})"
 
     lines = [f"Kunde: {name}"]
     if reason:
         lines.append(f"Grund: {reason}")
+    if phone:
+        lines.append(f"📞 {phone}")
     if collected_info:
         lines.append(f"\n{collected_info}")
 
     message = "\n".join(lines)
 
+    # Klickbarer Link in der Push: WhatsApp-Chat direkt öffnen (von dort aus auch
+    # anrufbar). Telegram/Webchat haben keine direkt anwählbare Nummer → kein Link.
+    url = f"https://wa.me/{phone}" if phone else None
+    url_title = "💬 Kunde direkt anschreiben" if phone else None
+
     send_pushover(
         title=title,
         message=message,
         priority=1,  # High priority – plays sound even in quiet hours
+        url=url,
+        url_title=url_title,
     )
 
 
