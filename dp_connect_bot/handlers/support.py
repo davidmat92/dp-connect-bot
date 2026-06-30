@@ -56,6 +56,17 @@ def handle_support_message(chat_id, text, session, channel):
             collected_info=escalation_info.get("collected_info", ""),
             customer_name=customer_name,
         )
+        # Zusätzlich tools.dpconnect.de benachrichtigen (Dashboard-Sichtbarkeit) —
+        # fire-and-forget, darf den Chat nie stören.
+        try:
+            from dp_connect_bot.services.tools_notify import notify_help_needed
+            notify_help_needed(
+                chat_id=chat_id, channel=channel, contact_pref="",
+                issue=escalation_info.get("collected_info", "") or escalation_info.get("reason", ""),
+                customer=session.get("verified") or {}, customer_name=customer_name,
+            )
+        except Exception as e:
+            log.error(f"[support] tools-Benachrichtigung fehlgeschlagen: {e}")
 
         # Add mode choice keyboard so customer can switch back to ordering
         return BotResponse(

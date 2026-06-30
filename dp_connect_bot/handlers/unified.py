@@ -986,39 +986,83 @@ def _handle_reorder_confirm(session, chat_id):
         )
 
 
+def _recent_customer_issue(session, max_msgs=3, max_len=500):
+    """Fasst die letzten ECHTEN Kundennachrichten (keine [Button]-Marker, keine
+    /Commands) als Anliegen-Beschreibung für die Eskalations-Benachrichtigung zusammen."""
+    out = []
+    for m in reversed(session.get("conversation", [])):
+        if m.get("role") != "user":
+            continue
+        c = str(m.get("content", "")).strip()
+        if not c or c.startswith("[") or c.startswith("/"):
+            continue
+        out.append(c)
+        if len(out) >= max_msgs:
+            break
+    return " | ".join(reversed(out))[:max_len]
+
+
 def _handle_callback_request(session, chat_id, callback_data):
-    """Handle callback/contact request buttons."""
+    """Kontakt-Button (Rückruf/E-Mail/WhatsApp) nach [REQUEST_CALLBACK].
+
+    Diese Buttons erscheinen NUR, nachdem die KI einen Hilfe-Wunsch erkannt hat —
+    der Kunde hat sein Anliegen also bereits geschildert. Darum NICHT erneut nach
+    der Beschreibung fragen (das war eine frustrierende Schleife), sondern direkt an
+    Davides Team übergeben + benachrichtigen (Pushover-Push + tools.dpconnect.de)."""
     contact_type = callback_data[3:]  # email, phone, whatsapp, call
     channel = session.get("channel", "telegram")
+    pref = {"call": "Rückruf", "phone": "Rückruf",
+            "email": "E-Mail", "whatsapp": "WhatsApp"}.get(contact_type, contact_type)
+
+    # Ab jetzt übernimmt das Team — Bot antwortet nicht mehr automatisch, Folge-
+    # nachrichten werden weitergeleitet. Ausstieg jederzeit über das Menü/​/start.
+    session["human_mode"] = True
+    session["mode"] = "support"
+    session["support_step"] = None
+    session["conversation"].append(
+        {"role": "user", "content": f"[Kontakt gewählt: {pref} — Kunde wartet auf Davides Team]"})
+    track_event("callback_requested", chat_id, channel, contact_type)
+
+    issue = _recent_customer_issue(session)
+    customer_name = session.get("customer_name") or (session.get("verified") or {}).get("name", "")
+    # Team benachrichtigen — beide Wege defensiv, ein Fehler darf den Chat nie stören.
+    try:
+        from dp_connect_bot.services.pushover import notify_escalation
+        notify_escalation(chat_id, channel, reason=f"Kunde möchte {pref}",
+                          collected_info=issue, customer_name=customer_name)
+    except Exception as e:
+        log.error(f"[callback] Push fehlgeschlagen: {e}")
+    try:
+        from dp_connect_bot.services.tools_notify import notify_help_needed
+        notify_help_needed(chat_id=chat_id, channel=channel, contact_pref=pref,
+                           issue=issue, customer=session.get("verified") or {},
+                           customer_name=customer_name)
+    except Exception as e:
+        log.error(f"[callback] tools-Benachrichtigung fehlgeschlagen: {e}")
+
+    session_manager.save(chat_id, session)
 
     if contact_type == "whatsapp":
-        session["conversation"].append({"role": "user", "content": "[Rückruf gewählt: whatsapp]"})
-        track_event("callback_requested", chat_id, channel, "whatsapp")
-        session_manager.save(chat_id, session)
         return BotResponse(
             text=(
-                "💬 Top! Schreib uns direkt bei WhatsApp:\n\n"
+                "💬 Alles klar — ich hab dein Anliegen an Davides Team weitergegeben! "
+                "Du kannst hier direkt weiterschreiben:\n\n"
                 "👉 https://wa.me/4915906192252\n\n"
-                "Da meldet sich dann jemand aus Davides Team. 👋"
+                "Sie melden sich schnellstmöglich. 👋"
             ),
             answer_callback_text="✅ Weitergeleitet!",
         )
-    elif contact_type in ("email", "phone", "call"):
-        session["mode"] = "support"
-        session["support_step"] = None
-        session_manager.save(chat_id, session)
-        return BotResponse(
-            text=(
-                "📧 Klar! Beschreib mir dein Anliegen – ich versuche dir direkt zu helfen. "
-                "Falls noetig, leite ich dich an Davides Team weiter. ✍️"
-                if contact_type == "email"
-                else "📞 Klar! Beschreib mir dein Anliegen – ich versuche dir direkt zu helfen. "
-                "Falls noetig, leite ich dich an Davides Team weiter. ✍️"
-            ),
-            answer_callback_text="✅ Support aktiv!",
-        )
 
-    return BotResponse(is_silent=True)
+    contact_word = "telefonisch zurück" if contact_type in ("call", "phone") else "per E-Mail"
+    return BotResponse(
+        text=(
+            f"✅ Erledigt — ich hab dein Anliegen direkt an Davides Team weitergegeben. "
+            f"Sie melden sich schnellstmöglich {contact_word} bei dir! 🙌\n\n"
+            "Wenn du in der Zwischenzeit selbst weitermachen willst, tippe unten."
+        ),
+        keyboards=[Keyboard(type=KeyboardType.MODE_CHOICE)],
+        answer_callback_text="✅ Weitergeleitet!",
+    )
 
 
 # ============================================================
