@@ -30,6 +30,11 @@ WP_BOT_SECRET = os.environ.get("WP_BOT_SECRET", "")
 WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "")
 WHATSAPP_PHONE_ID = os.environ.get("WHATSAPP_PHONE_ID", "")
 WHATSAPP_VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "dpconnect_bot_verify_2024")
+# App-Geheimcode der Meta-App (App-Dashboard → Einstellungen → Allgemein → App-Geheimcode).
+# Gesetzt → eingehende Webhooks werden per X-Hub-Signature-256 validiert, gefälschte
+# POSTs von Dritten abgewiesen (sonst könnte jeder mit der URL Nachrichten einschleusen).
+# Leer = Validierung aus (Verhalten wie bisher).
+WHATSAPP_APP_SECRET = os.environ.get("WHATSAPP_APP_SECRET", "")
 WHATSAPP_API = "https://graph.facebook.com/v18.0"
 
 # Web Chat Config

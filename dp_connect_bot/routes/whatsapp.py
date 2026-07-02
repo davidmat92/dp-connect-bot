@@ -1,5 +1,7 @@
 """WhatsApp webhook route blueprint."""
 
+import hashlib
+import hmac
 import threading
 
 import requests
@@ -8,7 +10,21 @@ from flask import Blueprint, request, jsonify
 from dp_connect_bot.handlers.unified import unified_handle_message, unified_handle_callback
 from dp_connect_bot.adapters.whatsapp import WhatsAppAdapter
 from dp_connect_bot.services.voice import transcribe_whatsapp_voice
-from dp_connect_bot.config import WHATSAPP_VERIFY_TOKEN, log
+from dp_connect_bot.config import WHATSAPP_VERIFY_TOKEN, WHATSAPP_APP_SECRET, log
+
+
+def _valid_signature(req) -> bool:
+    """Prueft die Meta-Signatur (X-Hub-Signature-256 = HMAC-SHA256 des rohen Bodys
+    mit dem App-Geheimcode). Ohne konfiguriertes Secret → True (Validierung aus).
+    Verhindert, dass Dritte mit der Webhook-URL gefaelschte 'Kundennachrichten'
+    einschleusen (die Absendernummer wird auto-verifiziert → Bestell-Risiko!)."""
+    if not WHATSAPP_APP_SECRET:
+        return True
+    sig = req.headers.get("X-Hub-Signature-256", "")
+    if not sig.startswith("sha256="):
+        return False
+    expected = hmac.new(WHATSAPP_APP_SECRET.encode(), req.get_data(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, sig[7:])
 
 whatsapp_bp = Blueprint("whatsapp", __name__)
 adapter = WhatsAppAdapter()
@@ -101,6 +117,12 @@ def whatsapp_verify():
 def whatsapp_webhook():
     """Receive incoming WhatsApp messages and callbacks."""
     try:
+        # Gefälschte Webhooks abweisen (nur wenn WHATSAPP_APP_SECRET gesetzt ist).
+        # Echte Meta-Requests tragen immer eine gültige Signatur.
+        if not _valid_signature(request):
+            log.warning("[WA] Webhook mit ungueltiger/fehlender Signatur abgewiesen")
+            return jsonify(ok=False), 403
+
         payload = request.get_json()
         if not payload:
             return jsonify(ok=True), 200

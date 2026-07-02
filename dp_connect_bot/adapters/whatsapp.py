@@ -7,7 +7,7 @@ import requests
 from dp_connect_bot.adapters.base import ChannelAdapter
 from dp_connect_bot.config import WHATSAPP_TOKEN, WHATSAPP_PHONE_ID, WHATSAPP_API, log
 from dp_connect_bot.models.response import BotResponse, KeyboardType
-from dp_connect_bot.services.product_cache import cache
+from dp_connect_bot.services.product_cache import cache, staffel_price_for
 from dp_connect_bot.utils.formatting import format_price_de, get_variant_display_name, parse_price
 
 
@@ -431,9 +431,16 @@ class WhatsAppAdapter(ChannelAdapter):
         rows = []
         for qty in quantities:
             desc = ""
-            if price_num and price_num > 0:
-                total = price_num * qty
+            # Staffelpreis der erreichten Stufe verwenden — sonst zeigt die Zeile
+            # einen ZU HOHEN Gesamtpreis (Basispreis × Menge), obwohl der Warenkorb
+            # den Rabatt anwendet. Sichtbarer Rabatt = Kaufanreiz fuer mehr Menge.
+            sp = staffel_price_for(product, qty)
+            unit = sp if sp is not None else price_num
+            if unit and unit > 0:
+                total = unit * qty
                 desc = f"= {format_price_de(total)} netto"
+                if sp is not None and price_num and sp < price_num:
+                    desc += f" 💥 nur {format_price_de(sp)}/Stk"
             rows.append({
                 "id": f"qty_{kb.product_id}_{qty}",
                 "title": f"{qty} Stück"[:24],
