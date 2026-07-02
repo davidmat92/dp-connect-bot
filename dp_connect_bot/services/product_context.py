@@ -163,9 +163,25 @@ def format_search_results(term):
             parts.append(f"\n  {p['title']} [ID:{p['id']}] | {price}{vpe}{pre}{staffel_str(p)}{bs_tag}")
 
     elif all_found:
-        parts.append(f"\n=== '{term}' NICHT LIEFERBAR ===")
-        for p in all_found[:5]:
-            parts.append(f"  - {p['title']} (ausverkauft)")
+        parts.append(f"\n=== '{term}' AKTUELL NICHT LIEFERBAR ===")
+        # MIT [ID:...], damit der Bot eine Wieder-da-Benachrichtigung (notify_when_back)
+        # anbieten/einrichten kann. Variable Eltern-Produkte überspringen — die sind
+        # nicht notifizierbar, nur die konkreten Varianten (die stehen ebenfalls in all_found).
+        shown = 0
+        for p in all_found:
+            if shown >= 6:
+                break
+            if p.get("produkt_typ") == "variable":
+                continue
+            name = get_variant_display_name(p) if p.get("post_parent") else p.get("title", "")
+            marker = " — nur VORBESTELLBAR" if p.get("preorder") else " (ausverkauft)"
+            parts.append(f"  - {name} [ID:{p['id']}]{marker}")
+            shown += 1
+        if not shown:  # Fallback (nur variable Parents gefunden)
+            for p in all_found[:5]:
+                parts.append(f"  - {p['title']} [ID:{p['id']}] (ausverkauft)")
+        parts.append("  → Biete dem Kunden an, ihn via notify_when_back (mit der jeweiligen [ID]) zu "
+                     "benachrichtigen, sobald wieder lieferbar — erst nach seinem OK.")
         if all_found[0].get("category"):
             cats = all_found[0]["category"].split("|")
             for cat in cats:
@@ -225,8 +241,11 @@ def format_parent_with_variations(parent, avail_vars=None, is_bestseller=False):
 
         unavail = [v for v in all_vars if not cache.is_available(v["id"])]
         if unavail:
-            names = [get_variant_display_name(v) for v in unavail]
-            lines.append(f"\n  NICHT LIEFERBAR ({len(unavail)}): {', '.join(names[:15])}")
+            # MIT [ID:...], damit der Bot für eine ausverkaufte Sorte eine Wieder-da-
+            # Benachrichtigung (notify_when_back) anbieten/einrichten kann.
+            listed = ", ".join(f"{get_variant_display_name(v)} [ID:{v['id']}]" for v in unavail[:12])
+            more = f" … (+{len(unavail) - 12} weitere)" if len(unavail) > 12 else ""
+            lines.append(f"\n  NICHT LIEFERBAR ({len(unavail)}) — für Wieder-da-Alarm nutzbar: {listed}{more}")
 
     else:
         parent_flavors = pipe_to_list(parent.get("geschmack", ""))
