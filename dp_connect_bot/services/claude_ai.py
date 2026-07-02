@@ -469,6 +469,20 @@ def _execute_order_tool(tool_name, tool_input, session=None):
             prod = cache.get_product_by_id(pid)
             if not prod:
                 return "Dieses Produkt finde ich gerade nicht — bitte nochmal die Variante suchen."
+            # Parent-Guard (wie beim Warenkorb): eine Vormerkung auf die ganze
+            # PRODUKTLINIE ist mehrdeutig — der Parent gilt schon als 'vorrätig',
+            # wenn IRGENDEINE Sorte da ist, obwohl die gewuenschte fehlt. Immer die
+            # konkrete Variante vormerken.
+            if prod.get("produkt_typ") == "variable":
+                from dp_connect_bot.utils.formatting import get_variant_display_name
+                out = [v for v in cache.get_variations_all(pid)
+                       if not cache.is_available(v["id"]) or v.get("preorder")]
+                if out:
+                    listed = ", ".join(f"{get_variant_display_name(v)} [ID:{v['id']}]" for v in out[:12])
+                    return (f"Das ist die ganze Produktlinie — fuer den Wieder-da-Alarm brauche ich die "
+                            f"KONKRETE Sorte. Nicht lieferbare Sorten: {listed}. Gibt es nur EINE, nimm sie "
+                            "direkt; sonst frag den Kunden kurz, welche gemeint ist.")
+                return "Alle Sorten dieser Linie sind aktuell lieferbar — keine Vormerkung noetig, direkt anbieten."
             is_preorder = bool(prod.get("preorder"))
             # Vorbestell-Produkte stehen technisch auf instock (Platzhalter-Bestand),
             # sind aber NICHT lieferbar → Vormerkung trotzdem erlauben. Nur GENUINE
