@@ -294,6 +294,20 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
             session_manager.save(chat_id, session)
             return BotResponse(text="🛒 Klar! Bestell-Modus ist aktiv. Was brauchst du?")
         session["conversation"].append({"role": "user", "content": text})
+        # Davide benachrichtigen, dass der Kunde WEITER schreibt — die Eskalations-
+        # Push kam evtl. vor Stunden; ohne Folge-Push wartet der Kunde ins Leere
+        # ("meldet sich gleich"). Gedrosselt: max 1 Push / 5 Min / Chat, damit
+        # 5 schnelle Zeilen nicht 5 Pushes ausloesen.
+        import time as _ht
+        _now = _ht.time()
+        if _now - session.get("human_push_ts", 0) > 300:
+            session["human_push_ts"] = _now
+            try:
+                from dp_connect_bot.services.pushover import notify_human_followup
+                notify_human_followup(chat_id, channel, text,
+                                      session.get("customer_name") or (session.get("verified") or {}).get("name"))
+            except Exception as e:
+                log.error(f"[human_mode] Folge-Push fehlgeschlagen: {e}")
         session_manager.save(chat_id, session)
         # Klar erkennbarer Ausstieg: ein Button (mode_order → human_mode=False) gilt
         # auf ALLEN Kanaelen (auch Webchat) und ist eindeutig — anders als der exakte

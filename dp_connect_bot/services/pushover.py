@@ -98,6 +98,28 @@ def notify_escalation(chat_id, channel, reason, collected_info, customer_name=No
     )
 
 
+def notify_human_followup(chat_id, channel, text, customer_name=None):
+    """Kunde schreibt WEITER, waehrend human_mode aktiv ist (wartet auf einen
+    Menschen). Die Eskalations-Push kam evtl. vor Stunden — ohne Folge-Push
+    wartet der Kunde ins Leere. Drosselung macht der Aufrufer (1/5 Min/Chat)."""
+    ch_label = {"telegram": "Telegram", "whatsapp": "WhatsApp", "web": "Webchat"}.get(channel, channel)
+    name = customer_name or chat_id[:16]
+    phone = str(chat_id)[3:] if channel == "whatsapp" and str(chat_id).startswith("wa_") else ""
+
+    lines = [f"Kunde: {name}"]
+    if phone:
+        lines.append(f"📞 {phone}")
+    lines.append(f"\n„{text[:500]}“")
+
+    send_pushover(
+        title=f"Kunde wartet auf Antwort ({ch_label})",
+        message="\n".join(lines),
+        priority=0,
+        url=f"https://wa.me/{phone}" if phone else None,
+        url_title="💬 Kunde direkt anschreiben" if phone else None,
+    )
+
+
 def notify_api_outage(detail):
     """Alarm an Davide, wenn die Anthropic-API hart ausfaellt (z.B. Guthaben leer).
 
