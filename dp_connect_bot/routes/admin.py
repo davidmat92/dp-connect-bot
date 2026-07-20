@@ -82,6 +82,24 @@ def admin_reorder_reminders():
         return jsonify(ok=False, error=str(e)[:200]), 500
 
 
+@admin_bp.route("/admin/reorder-contacts", methods=["GET"])
+def admin_reorder_contacts():
+    """READ-ONLY fuer das tools-'Reorder-Radar': welche WC-Kunden sind verifizierte
+    Bot-Kontakte (WhatsApp/Telegram) und wann wurden sie zuletzt vom Bot erinnert
+    (last_reminded_at / recently_reminded = innerhalb der 5-Tage-Drossel).
+    Sendet NICHTS, aendert NICHTS — das Tool markiert damit nur, welche faelligen
+    Kunden der Bot bereits betreut (kein Doppel-Versand)."""
+    if not _require_admin():
+        return jsonify(ok=False, error="Unauthorized"), 401
+    try:
+        from dp_connect_bot.services.reorder_reminders import list_reorder_contacts
+        contacts = list_reorder_contacts()
+        return jsonify(ok=True, count=len(contacts), contacts=contacts), 200
+    except Exception as e:
+        log.error(f"[admin_reorder_contacts] {e}")
+        return jsonify(ok=False, error=str(e)[:200]), 500
+
+
 @admin_bp.route("/admin/sessions", methods=["GET"])
 def admin_sessions():
     if not _require_admin():

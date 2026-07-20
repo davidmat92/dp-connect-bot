@@ -15,6 +15,7 @@ SICHERHEIT:
 
 import sqlite3
 import time
+from datetime import datetime
 from threading import Lock
 
 from dp_connect_bot.config import HISTORY_DB_PATH, log
@@ -98,6 +99,50 @@ def _dispatch(chat_id, channel, name, r) -> bool:
             log.error(f"reorder reminder WA template: {e}")
             return False
     return False
+
+
+def list_reorder_contacts() -> list:
+    """READ-ONLY fuer das tools-'Reorder-Radar' (GET /admin/reorder-contacts):
+    ALLE per Bot erreichbaren verifizierten Kontakte (WhatsApp/Telegram mit
+    customer_id) + wann sie zuletzt vom Bot erinnert wurden. Sendet NICHTS und
+    filtert NICHTS — auch kuerzlich Erinnerte sind dabei (der dry_run von
+    check_and_remind wuerde die rausfiltern, darum eigene Funktion).
+    Gleiche Iterationslogik wie check_and_remind (customer_id-Pflicht, wa_/tg_-
+    Praefix, web uebersprungen) — bei Aenderungen beide synchron halten."""
+    from dp_connect_bot.services.verification import _load_store
+    store = dict(_load_store() or {})
+
+    reminded = {}
+    try:
+        with sqlite3.connect(HISTORY_DB_PATH, timeout=5) as c:
+            _ensure(c)
+            reminded = dict(c.execute("SELECT chat_id, last_ts FROM reorder_reminded").fetchall())
+    except Exception as e:
+        # Kontakte trotzdem liefern; ohne Throttle-Info gilt konservativ
+        # recently_reminded=False (das Tool zeigt nur an, sendet nicht).
+        log.error(f"reorder contacts throttle-read: {e}")
+
+    now = time.time()
+    contacts = []
+    for chat_id, v in store.items():
+        cust = (v or {}).get("customer_id")
+        if not cust:
+            continue
+        if chat_id.startswith("tg_"):
+            channel = "telegram"
+        elif chat_id.startswith("wa_"):
+            channel = "whatsapp"
+        else:
+            continue  # web → Bot kann nicht proaktiv pushen
+        ts = reminded.get(str(chat_id))
+        contacts.append({
+            "customer_id": cust,
+            "channel": channel,
+            "name": (v or {}).get("name", ""),
+            "last_reminded_at": datetime.utcfromtimestamp(ts).isoformat() if ts else None,
+            "recently_reminded": bool(ts) and (now - ts) < REMIND_COOLDOWN_DAYS * 86400,
+        })
+    return contacts
 
 
 def check_and_remind(dry_run=False) -> dict:
