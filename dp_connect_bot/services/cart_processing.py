@@ -10,8 +10,49 @@ from dp_connect_bot.models.response import Button, Keyboard, KeyboardType, WcAct
 from dp_connect_bot.services.product_cache import cache, staffel_price_for
 from dp_connect_bot.services.history import track_event
 from dp_connect_bot.utils.formatting import (
-    format_price_de, get_variant_display_name, parse_price, stock_label,
+    format_price_de, get_variant_display_name, kebab_to_readable, parse_price, stock_label,
 )
+
+# Generische Geschmacks-Zusaetze, die NICHT als Haupt-Geschmack zaehlen
+# ("Watermelon Ice" → Haupt-Token "watermelon", nicht "ice").
+_GENERIC_FLAVOR_TOKENS = {"ice", "iced", "mix", "double", "triple", "super", "salt", "cool", "fresh"}
+
+
+def _find_flavor_alternatives(product, limit=2):
+    """Lieferbare Alternativen mit GLEICHER Kategorie und GLEICHER Geschmacksrichtung
+    (andere Marke/Produktlinie) — fuer 'X ist leider nicht lieferbar'-Faelle, damit
+    der Kunde nicht mit leeren Haenden dasteht. Bewusst defensiv: ohne erkennbaren
+    Geschmack → keine Vorschlaege (lieber nichts als Unpassendes)."""
+    if not product:
+        return []
+    flavor = kebab_to_readable(str(product.get("geschmack") or product.get("flavor") or "")).lower().strip()
+    tokens = [t for t in re.split(r"[^a-zäöüß]+", flavor)
+              if len(t) >= 4 and t not in _GENERIC_FLAVOR_TOKENS]
+    if not tokens:
+        return []
+    key = tokens[0]  # Haupt-Geschmack ("watermelon ice" → "watermelon")
+    own_cats = {c.strip().lower() for c in str(product.get("category") or "").split("|")
+                if c.strip() and c.strip().lower() != "bestseller"}
+    pid = str(product.get("id"))
+    parent = str(product.get("post_parent") or "")
+    out = []
+    for p in cache.available:
+        if p.get("produkt_typ") == "variable":
+            continue  # Eltern-Produkte sind nicht bestellbar
+        if str(p.get("id")) == pid:
+            continue
+        if parent and str(p.get("post_parent") or "") == parent:
+            continue  # Geschwister derselben Linie = nur andere Geschmaecker
+        cand_flavor = kebab_to_readable(str(p.get("geschmack") or p.get("flavor") or "")).lower()
+        if key not in cand_flavor:
+            continue
+        cand_cats = {c.strip().lower() for c in str(p.get("category") or "").split("|")
+                     if c.strip() and c.strip().lower() != "bestseller"}
+        if own_cats and cand_cats and not (own_cats & cand_cats):
+            continue  # andere Kategorie (z.B. Liquid statt Einweg-Vape)
+        out.append(p)
+    out.sort(key=lambda p: 0 if "bestseller" in str(p.get("category", "")).lower() else 1)
+    return out[:limit]
 
 
 def _apply_staffel_price(item, product):
@@ -128,6 +169,18 @@ def process_cart_actions(session, ai_response):
                     if product_check:
                         log.warning(f"Cart add: Produkt {pid} ({product_check.get('title','')}) existiert aber nicht verfuegbar")
                         clean += f"\n\n⚠️ {product_check.get('title', 'Dieses Produkt')} ist leider aktuell nicht lieferbar."
+                        # Nicht mit leeren Haenden stehen lassen: lieferbare Alternativen
+                        # aus GLEICHER Kategorie + Geschmacksrichtung anbieten (z.B. beim
+                        # Einpacken aus dem Rechnungs-Vergleich).
+                        alts = _find_flavor_alternatives(product_check)
+                        if alts:
+                            alt_strs = []
+                            for a in alts:
+                                label = f"{a.get('brand', '')} {get_variant_display_name(a)}".strip()
+                                pr = format_price_de(a.get("price"))
+                                alt_strs.append(f"{label} ({pr}/Stk)" if pr else label)
+                            clean += (" Ähnlich im Geschmack & lieferbar: " + " oder ".join(alt_strs) +
+                                      " — sag Bescheid, dann packe ich dir das ein!")
                     else:
                         log.warning(f"Cart add: Produkt {pid} nicht im Cache gefunden")
                         clean += f"\n\n⚠️ Produkt-ID {pid} wurde nicht gefunden. Bitte nochmal versuchen."
