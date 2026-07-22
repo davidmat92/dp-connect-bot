@@ -272,7 +272,7 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
     # statt im Callback-Handler. "chatorder_" fehlte → Chat-Bestellung per
     # Rechnung/Vorkasse loeste auf WhatsApp nichts aus.
     _CB_PREFIXES = ("mode_", "sel_", "qty_", "custom_", "cat_", "reorder_",
-                    "cb_", "login_", "done_", "chatorder_", "flavmore_")
+                    "cb_", "login_", "done_", "chatorder_", "flavmore_", "invcart_")
     if stripped.startswith(_CB_PREFIXES) or stripped == "noop":
         resp = unified_handle_callback(chat_id, stripped, channel=channel)
         session_manager.save(chat_id, session)
@@ -565,6 +565,17 @@ def unified_handle_callback(chat_id, callback_data, channel="telegram"):
         session["conversation"].append({"role": "assistant", "content": resp_text})
         session_manager.save(chat_id, session)
         return BotResponse(text=resp_text, answer_callback_text="Sorte tippen")
+
+    # "In den Warenkorb"-Button nach dem Rechnungs-Vergleich → als natuerliche
+    # Kunden-Bitte an die KI weiterreichen. Die Artikel-Daten stehen als JSON in
+    # der Historie; verifizierte Kunden bekommen alles eingepackt, unverifizierte
+    # fuehrt der bestehende Gate erst durch die kurze Verifizierung.
+    if callback_data == "invcart_go":
+        session["mode"] = "order"
+        session_manager.save(chat_id, session)
+        return unified_handle_message(
+            chat_id, "Leg mir bitte alle Artikel aus dem Rechnungs-Vergleich in den Warenkorb",
+            channel=channel)
 
     if callback_data == "mode_order":
         session["mode"] = "order"

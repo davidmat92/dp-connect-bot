@@ -118,15 +118,18 @@ def check_invoice(file_bytes: bytes, media_type: str, filename: str, customer_re
 
 
 def run_invoice_check_flow(send_text, prefixed_chat_id, file_bytes, media_type, filename,
-                           send_link=None):
+                           send_link=None, send_button=None):
     """Kompletter Chat-Flow (kanal-agnostisch, send_text = Sender des Adapters):
-    Zwischennachricht → tools-Check → summary_text 1:1 → Vergleichs-PDF +
-    Warenkorb-Link (verifiziert) bzw. Registrierungs-CTA (unverifiziert).
+    Zwischennachricht → tools-Check → summary_text 1:1 → Vergleichs-PDF-Button +
+    'In den Warenkorb'-Chat-Button (bei Ersparnis).
 
-    send_link(body, button_title, url) -> bool: optionaler Sender fuer klickbare
-    URL-BUTTONS (WhatsApp cta_url / Telegram Inline-Button). Fehlt er oder
-    schlaegt er fehl → Text-Link-Fallback. Schreibt Marker in die Gespraechs-
-    Historie, damit die KI bei Folgefragen den Kontext hat."""
+    send_link(body, button_title, url) -> bool: Sender fuer klickbare URL-BUTTONS
+    (WhatsApp cta_url / Telegram Inline-URL-Button).
+    send_button(body, button_title, callback_data) -> bool: Sender fuer CHAT-
+    Callback-Buttons (legt via Bot-Warenkorb, unverifizierte werden dabei durch
+    die kurze Verifizierung gefuehrt). Fehlt ein Sender oder schlaegt er fehl →
+    Text-Fallback. Schreibt Marker + Artikel-Daten in die Gespraechs-Historie,
+    damit die KI bei 'in den Warenkorb' die Positionen exakt uebernehmen kann."""
     from dp_connect_bot.models.session import session_manager
 
     session = session_manager.get(prefixed_chat_id)
@@ -165,37 +168,49 @@ def run_invoice_check_flow(send_text, prefixed_chat_id, file_bytes, media_type, 
     cart_url = (res.get("cart_url") or "").strip()
     pdf_url = (res.get("pdf_url") or "").strip()
 
-    # Follow-ups — Links VERBATIM aus der tools-Antwort (nie durchs Sprachmodell,
-    # Tokens/IDs dürfen nicht verändert werden). Als klickbare BUTTONS (send_link),
-    # mit Text-Link-Fallback:
-    # 1) brandiertes Vergleichs-PDF IMMER anbieten (auch ohne Sparpotenzial),
-    # 2) bei Ersparnis: Warenkorb-Button (verifiziert) bzw. Registrierungs-CTA
-    #    (unverifiziert — cart_url dort weglassen, ohne Konto bringt er nichts).
-    links = []  # (body, button_title, url)
-    if pdf_url:
-        links.append(("📄 Dein Vergleich als PDF:", "PDF öffnen", pdf_url))
-    if saving > 0:
-        if verified.get("customer_id") and cart_url:
-            links.append(("🛒 Alle Artikel direkt in den Warenkorb legen:", "Warenkorb öffnen", cart_url))
-        elif not verified.get("customer_id"):
-            links.append(("Diese Preise bekommst du als dpconnect-Kunde — in 2 Minuten registriert!",
-                          "Jetzt registrieren", "https://dpconnect.de/kunde-werden/"))
+    # Follow-ups:
+    # 1) brandiertes Vergleichs-PDF IMMER anbieten (auch ohne Sparpotenzial) —
+    #    URL VERBATIM aus der tools-Antwort (nie durchs Sprachmodell).
+    # 2) bei Ersparnis: CHAT-Button 'In den Warenkorb' — legt die Artikel im
+    #    Bot-Warenkorb (unverifizierte werden dabei kurz verifiziert; KEIN
+    #    kunde-werden-Link, der bringt hier nichts). Verifizierte mit cart_url
+    #    bekommen zusaetzlich den Shop-Warenkorb-Link als Button.
     followup_lines = []
-    for body, title, url in links:
-        followup_lines.append(f"{body} {url}")
-        sent_as_button = bool(send_link) and send_link(body, title, url)
-        if not sent_as_button:
-            send_text(f"{body}\n{url}")
+    if pdf_url:
+        followup_lines.append(f"📄 Dein Vergleich als PDF: {pdf_url}")
+        if not (send_link and send_link("📄 Dein Vergleich als PDF:", "PDF öffnen", pdf_url)):
+            send_text(f"📄 Dein Vergleich als PDF:\n{pdf_url}")
+    if saving > 0:
+        cart_body = "Soll ich dir alle Artikel direkt hier in den Warenkorb legen?"
+        followup_lines.append(f"🛒 {cart_body}")
+        if not (send_button and send_button(f"🛒 {cart_body}", "In den Warenkorb", "invcart_go")):
+            send_text(f"🛒 {cart_body} Antworte einfach mit *in den Warenkorb* — dann lege ich alles rein!")
+        if verified.get("customer_id") and cart_url:
+            followup_lines.append(f"Oder im Shop: {cart_url}")
+            if not (send_link and send_link("Oder lieber im Shop-Warenkorb:", "Warenkorb öffnen", cart_url)):
+                send_text(f"Oder lieber im Shop-Warenkorb:\n{cart_url}")
     followup = "\n".join(followup_lines)
 
-    # Historie: KI kennt bei Folgefragen ("leg mir die in den Warenkorb") den Kontext
+    # Historie: KI kennt bei Folgefragen ("leg mir die in den Warenkorb") den Kontext.
+    # Die lines-Rohdaten (Artikel-Zuordnungen aus tools) als JSON anhaengen — damit
+    # kann die KI die Positionen beim 'In den Warenkorb'-Tap EXAKT uebernehmen
+    # (statt sie aus dem Fazit-Text zu erraten).
+    import json as _json
+    assistant_content = summary[:1500] + (f"\n\n{followup}" if followup else "")
+    lines_data = res.get("lines") or []
+    if lines_data:
+        try:
+            assistant_content += ("\n\n[Artikel-Daten des Rechnungs-Vergleichs (fuer 'in den "
+                                  "Warenkorb'): " + _json.dumps(lines_data[:25], ensure_ascii=False)[:3000] + "]")
+        except Exception:
+            pass
     session.setdefault("conversation", []).append({
         "role": "user",
         "content": "[Kunde hat eine Fremd-Rechnung zum Preisvergleich geschickt]",
     })
     session["conversation"].append({
         "role": "assistant",
-        "content": summary[:1500] + (f"\n\n{followup}" if followup else ""),
+        "content": assistant_content,
     })
     session_manager.save(prefixed_chat_id, session)
     log.info(f"[invoice-check] {prefixed_chat_id}: matched={res.get('matched')}, "

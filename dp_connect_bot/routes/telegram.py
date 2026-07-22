@@ -56,7 +56,9 @@ def telegram_webhook():
                     lambda t: adapter._send_message(chat_id, t),
                     adapter.prefixed_chat_id(chat_id),
                     image_bytes, "image/jpeg", "rechnung.jpg",
-                    send_link=lambda b, t, u: adapter._send_url_button(chat_id, b, t, u))
+                    send_link=lambda b, t, u: adapter._send_url_button(chat_id, b, t, u),
+                    send_button=lambda b, t, cb: adapter._send_message(
+                        chat_id, b, reply_markup={"inline_keyboard": [[{"text": t, "callback_data": cb}]]}))
                 return jsonify(ok=True), 200
             from dp_connect_bot.services.photo_vision import describe_photo, build_photo_message, _is_shelf_request
             desc = describe_photo(image_bytes, caption=caption)
@@ -88,7 +90,9 @@ def telegram_webhook():
                     lambda t: adapter._send_message(chat_id, t),
                     adapter.prefixed_chat_id(chat_id),
                     file_bytes, "application/pdf", fname or "rechnung.pdf",
-                    send_link=lambda b, t, u: adapter._send_url_button(chat_id, b, t, u))
+                    send_link=lambda b, t, u: adapter._send_url_button(chat_id, b, t, u),
+                    send_button=lambda b, t, cb: adapter._send_message(
+                        chat_id, b, reply_markup={"inline_keyboard": [[{"text": t, "callback_data": cb}]]}))
             else:
                 adapter._send_message(
                     chat_id,
