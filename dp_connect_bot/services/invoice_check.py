@@ -158,15 +158,23 @@ def run_invoice_check_flow(send_text, prefixed_chat_id, file_bytes, media_type, 
     except (ValueError, TypeError):
         saving = 0.0
     cart_url = (res.get("cart_url") or "").strip()
+    pdf_url = (res.get("pdf_url") or "").strip()
 
-    followup = ""
+    # Follow-up-Zeilen — Links VERBATIM aus der tools-Antwort (nie durchs
+    # Sprachmodell, Tokens/IDs dürfen nicht verändert werden):
+    # 1) brandiertes Vergleichs-PDF IMMER anbieten (auch ohne Sparpotenzial),
+    # 2) bei Ersparnis: Warenkorb-Link (verifiziert) bzw. Registrierungs-CTA
+    #    (unverifiziert — cart_url dort weglassen, ohne Konto bringt er nichts).
+    extras = []
+    if pdf_url:
+        extras.append(f"📄 Dein Vergleich als PDF: {pdf_url}")
     if saving > 0:
         if verified.get("customer_id") and cart_url:
-            # Link VERBATIM aus der tools-Antwort — nie durchs Sprachmodell.
-            followup = f"Wenn du magst, lege ich dir die Artikel direkt in den Warenkorb: {cart_url}"
+            extras.append(f"🛒 Alle Artikel direkt in den Warenkorb: {cart_url}")
         elif not verified.get("customer_id"):
-            followup = ("Diese Preise bekommst du als dpconnect-Kunde — die Registrierung "
-                        "dauert nur 2 Minuten: https://dpconnect.de/kunde-werden/")
+            extras.append("Diese Preise bekommst du als dpconnect-Kunde — in 2 Minuten "
+                          "registriert: https://dpconnect.de/kunde-werden/")
+    followup = "\n\n".join(extras)
     if followup:
         send_text(followup)
 
