@@ -23,10 +23,10 @@ class WhatsAppAdapter(ChannelAdapter):
     def send_response(self, chat_id, response: BotResponse):
         if response.is_silent:
             return
-        # Leerer Text OHNE Keyboard/Dokument → nichts zu senden. ABER: ein reines
-        # Keyboard (z.B. KI-Antwort war nur [SHOW_FLAVORS:id]) ODER ein reines Dokument
-        # (Rechnung) MUSS trotzdem raus. Den fehlenden Body faengt _send_message mit "👇" ab.
-        if not response.text and not response.keyboards and not response.document:
+        # Leerer Text OHNE Keyboard/Dokumente → nichts zu senden. ABER: ein reines
+        # Keyboard (z.B. KI-Antwort war nur [SHOW_FLAVORS:id]) ODER reine Dokumente
+        # (Rechnungen) MUESSEN trotzdem raus. Fehlenden Body faengt _send_message mit "👇" ab.
+        if not response.text and not response.keyboards and not response.documents:
             return
 
         # Build WhatsApp-specific UI
@@ -84,9 +84,10 @@ class WhatsAppAdapter(ChannelAdapter):
         text = self._clean_text(response.text or "") + text_suffix
         self._send_message(chat_id, text, buttons=buttons, list_menu=list_menu)
 
-        # Dokument (z.B. Rechnung) als PDF-Datei nachschicken
-        if response.document and response.document.get("url"):
-            doc = response.document
+        # Dokumente (z.B. Rechnungen) als PDF-Dateien nachschicken — ALLE, nicht nur eine
+        for doc in (response.documents or []):
+            if not doc.get("url"):
+                continue
             ok = self._send_document(chat_id, doc["url"], doc.get("filename", "Dokument.pdf"))
             if not ok:
                 # WhatsApp konnte die Datei nicht laden → Link als Text nachreichen,

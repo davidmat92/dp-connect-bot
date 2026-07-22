@@ -53,9 +53,10 @@ class TelegramAdapter(ChannelAdapter):
         if response.text:
             self._send_message(chat_id, response.text, reply_markup=reply_markup)
 
-        # Dokument (z.B. Rechnung) als Datei nachschicken
-        if response.document and response.document.get("url"):
-            doc = response.document
+        # Dokumente (z.B. Rechnungen) als Dateien nachschicken — ALLE, nicht nur eine
+        for doc in (response.documents or []):
+            if not doc.get("url"):
+                continue
             ok = self._send_document(chat_id, doc["url"], doc.get("filename", "Dokument.pdf"))
             if not ok:
                 self._send_message(chat_id, f"{doc.get('fallback_label', '📄')}:\n{doc['url']}")

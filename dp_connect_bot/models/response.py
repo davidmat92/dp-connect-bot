@@ -58,6 +58,6 @@ class BotResponse:
     cart_rich: dict = field(default_factory=dict)
     is_silent: bool = False            # True = don't send anything
     answer_callback_text: str = ""     # For Telegram answerCallbackQuery
-    document: dict = None              # Datei zum Mitsenden, z.B. Rechnung:
-    #   {"url": "...", "filename": "Rechnung.pdf", "fallback_label": "📄 Deine Rechnung"}
-    # Adapter schicken sie als Dokument (WhatsApp/Telegram) bzw. als Link (Webchat).
+    documents: list = field(default_factory=list)  # Dateien zum Mitsenden (z.B. Rechnungen):
+    #   [{"url": "...", "filename": "Rechnung.pdf", "fallback_label": "📄 Deine Rechnung"}]
+    # Adapter schicken JEDE als Dokument (WhatsApp/Telegram) bzw. als Link (Webchat).

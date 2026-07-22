@@ -420,19 +420,23 @@ def _execute_order_tool(tool_name, tool_input, session=None):
             if res.get("ok") and res.get("url"):
                 log.info(f"[invoice] Kunde {customer_id} Bestellung #{res.get('number')} → tools-URL: {res['url']}")
                 # Link NICHT ins Tool-Ergebnis geben, das das Modell sieht — sonst tippt
-                # es den Hash ab und korrumpiert ihn. Exakt im Session-State zwischen-
-                # speichern; call_claude haengt ihn nach der Antwort 1:1 an.
+                # es den Hash ab und korrumpiert ihn. Exakt im Session-State SAMMELN
+                # (Liste — "alle Rechnungen" = mehrere get_invoice-Aufrufe → mehrere
+                # PDFs); der Handler haengt sie nach der Antwort alle 1:1 an.
                 if session is not None:
-                    session["_pending_invoice"] = {
-                        "url": res["url"],
-                        "number": res.get("number"),
-                        "invoice_number": res.get("invoice_number", ""),
-                    }
+                    pend = session.setdefault("_pending_invoices", [])
+                    if res["url"] not in [p.get("url") for p in pend] and len(pend) < 10:
+                        pend.append({
+                            "url": res["url"],
+                            "number": res.get("number"),
+                            "invoice_number": res.get("invoice_number", ""),
+                        })
                 return (f"RECHNUNG zu Bestellung #{res.get('number')} "
-                        f"(Rechnungsnr. {res.get('invoice_number', '')}) ist verfügbar. "
-                        "WICHTIG: Bestaetige dem Kunden NUR kurz (z.B. 'Hier ist deine Rechnung "
-                        "zu Bestellung #X 📄') und schreibe SELBST KEINE URL/keinen Link — das "
-                        "System haengt den korrekten Rechnungslink automatisch an.")
+                        f"(Rechnungsnr. {res.get('invoice_number', '')}) ist verfügbar und wird "
+                        "als PDF-Datei angehängt. WICHTIG: Bestaetige dem Kunden NUR kurz und "
+                        "schreibe SELBST KEINE URL/keinen Link — das System haengt die PDF(s) "
+                        "automatisch an. Will der Kunde MEHRERE/ALLE Rechnungen: rufe get_invoice "
+                        "fuer JEDE Bestellnummer auf (alle Aufrufe zusammen in EINER Runde).")
             same = "Diese Bestellnummer gibt es nicht oder gehoert nicht zu diesem Konto."
             reasons = {
                 "no_orders": "Der Kunde hat noch keine Bestellungen.",
@@ -679,19 +683,22 @@ def call_claude(session, user_message, product_context="", wc_cart=None):
             ai_text = ("Das hat gerade etwas länger gedauert 😅 Sag mir nochmal kurz, "
                        "welches Produkt du genau meinst — dann geht's sofort!")
 
-        # --- Rechnungslink deterministisch behandeln ---
+        # --- Rechnungslinks deterministisch behandeln ---
         # Jede vom Modell selbst geschriebene rechnung.dpconnect.de-URL entfernen (sie
-        # ist potenziell ein verfälschter Hash). Den exakten Link NICHT hier in den Text
-        # tippen — er liegt in session['_pending_invoice'] und wird vom Handler als
-        # DOKUMENT (WhatsApp/Telegram) bzw. Link (Webchat) verschickt. Hier nur einen
-        # sauberen Einleitungstext sicherstellen.
-        inv = session.get("_pending_invoice")
+        # ist potenziell ein verfälschter Hash). Die exakten Links NICHT hier in den
+        # Text tippen — sie liegen in session['_pending_invoices'] und werden vom
+        # Handler als DOKUMENTE (WhatsApp/Telegram) bzw. Links (Webchat) verschickt.
+        # Hier nur einen sauberen Einleitungstext sicherstellen.
+        invs = session.get("_pending_invoices") or []
         if _INVOICE_URL_RE.search(ai_text):
             ai_text = _INVOICE_URL_RE.sub("", ai_text)
             ai_text = re.sub(r"[ \t]{2,}", " ", ai_text).strip()
-        if inv and inv.get("url") and not ai_text.strip():
-            _nr = inv.get("number")
-            ai_text = f"Hier ist deine Rechnung{f' zu Bestellung #{_nr}' if _nr else ''} 📄"
+        if invs and not ai_text.strip():
+            if len(invs) == 1:
+                _nr = invs[0].get("number")
+                ai_text = f"Hier ist deine Rechnung{f' zu Bestellung #{_nr}' if _nr else ''} 📄"
+            else:
+                ai_text = f"Hier sind deine {len(invs)} Rechnungen 📄"
 
         session["conversation"].append({"role": "user", "content": user_message})
         session["conversation"].append({"role": "assistant", "content": ai_text})

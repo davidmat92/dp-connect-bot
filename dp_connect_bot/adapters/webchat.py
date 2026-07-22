@@ -36,11 +36,11 @@ class WebchatAdapter(ChannelAdapter):
             dict with keys: text, keyboards, wc_actions, checkout_url, cart, cart_rich
         """
         text = response.text
-        # Webchat zeigt keine echten Datei-Anhaenge → Dokument (z.B. Rechnung) als
-        # klickbaren Link an den Text haengen.
-        if response.document and response.document.get("url"):
-            doc = response.document
-            text = (text.rstrip() + f"\n\n{doc.get('fallback_label', '📄 Dokument')}: {doc['url']}").strip()
+        # Webchat zeigt keine echten Datei-Anhaenge → Dokumente (z.B. Rechnungen)
+        # als klickbare Links an den Text haengen (ALLE, nicht nur eins).
+        for doc in (response.documents or []):
+            if doc.get("url"):
+                text = (text.rstrip() + f"\n\n{doc.get('fallback_label', '📄 Dokument')}: {doc['url']}").strip()
 
         result = {
             "text": text,
