@@ -271,6 +271,40 @@ class WhatsAppAdapter(ChannelAdapter):
             enqueue(payload)
             return False
 
+    def _send_cta_url(self, phone, body, button_title, url):
+        """Sendet eine Nachricht mit klickbarem URL-BUTTON (interactive cta_url) —
+        schoener als ein nackter Link im Text. True/False; Aufrufer faellt bei
+        False auf einen Text-Link zurueck. Die URL kommt IMMER verbatim aus dem
+        Code (nie durchs Sprachmodell)."""
+        if not WHATSAPP_TOKEN or not WHATSAPP_PHONE_ID or not url:
+            return False
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": phone,
+            "type": "interactive",
+            "interactive": {
+                "type": "cta_url",
+                "body": {"text": (body or "👇")[:1024]},
+                "action": {
+                    "name": "cta_url",
+                    "parameters": {"display_text": (button_title or "Öffnen")[:20], "url": url},
+                },
+            },
+        }
+        try:
+            resp = requests.post(
+                f"{WHATSAPP_API}/{WHATSAPP_PHONE_ID}/messages",
+                headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}", "Content-Type": "application/json"},
+                json=payload, timeout=10,
+            )
+            if not resp.ok:
+                log.error(f"WhatsApp cta_url send error: {resp.text}")
+                return False
+            return True
+        except Exception as e:
+            log.error(f"WhatsApp cta_url send exception: {e}")
+            return False
+
     def _send_document(self, phone, url, filename="Dokument.pdf", caption=""):
         """Sendet ein Dokument (z.B. Rechnungs-PDF) per Link — WhatsApp laedt die
         Datei selbst von der URL und stellt sie als Datei zu. True/False."""

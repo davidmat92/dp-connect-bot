@@ -258,7 +258,8 @@ def whatsapp_webhook():
                             run_invoice_check_flow(
                                 (lambda p: (lambda t: adapter._send_message(p, t)))(phone),
                                 adapter.prefixed_chat_id(phone),
-                                image_bytes, mime or "image/jpeg", "rechnung.jpg")
+                                image_bytes, mime or "image/jpeg", "rechnung.jpg",
+                                send_link=(lambda p: (lambda b, t, u: adapter._send_cta_url(p, b, t, u)))(phone))
                             continue
                         from dp_connect_bot.services.photo_vision import describe_photo, build_photo_message, _is_shelf_request, _is_order_request
                         is_shelf = _is_shelf_request(caption)
@@ -294,7 +295,8 @@ def whatsapp_webhook():
                             run_invoice_check_flow(
                                 (lambda p: (lambda t: adapter._send_message(p, t)))(phone),
                                 adapter.prefixed_chat_id(phone),
-                                file_bytes, "application/pdf", fname or "rechnung.pdf")
+                                file_bytes, "application/pdf", fname or "rechnung.pdf",
+                                send_link=(lambda p: (lambda b, t, u: adapter._send_cta_url(p, b, t, u)))(phone))
                             continue
                         adapter._send_message(
                             phone,

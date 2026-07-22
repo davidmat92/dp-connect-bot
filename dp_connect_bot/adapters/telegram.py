@@ -66,6 +66,26 @@ class TelegramAdapter(ChannelAdapter):
             # This is handled separately in the route
             pass
 
+    def _send_url_button(self, chat_id, body, button_title, url):
+        """Sendet eine Nachricht mit Inline-URL-BUTTON. True/False; Aufrufer
+        faellt bei False auf einen Text-Link zurueck."""
+        if not url:
+            return False
+        try:
+            payload = {
+                "chat_id": chat_id,
+                "text": body or "👇",
+                "reply_markup": json.dumps({"inline_keyboard": [[{"text": (button_title or "Öffnen")[:40], "url": url}]]}),
+            }
+            resp = requests.post(f"{TELEGRAM_API}/sendMessage", json=payload, timeout=10)
+            if not resp.ok:
+                log.error(f"Telegram url-button send error: {resp.text}")
+                return False
+            return True
+        except Exception as e:
+            log.error(f"Telegram url-button send exception: {e}")
+            return False
+
     def _send_document(self, chat_id, url, filename="Dokument.pdf", caption=""):
         """Sendet ein Dokument (z.B. Rechnungs-PDF) per URL — Telegram laedt die Datei
         selbst und stellt sie als Datei zu. True/False."""

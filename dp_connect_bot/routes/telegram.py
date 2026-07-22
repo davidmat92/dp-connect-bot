@@ -55,7 +55,8 @@ def telegram_webhook():
                 run_invoice_check_flow(
                     lambda t: adapter._send_message(chat_id, t),
                     adapter.prefixed_chat_id(chat_id),
-                    image_bytes, "image/jpeg", "rechnung.jpg")
+                    image_bytes, "image/jpeg", "rechnung.jpg",
+                    send_link=lambda b, t, u: adapter._send_url_button(chat_id, b, t, u))
                 return jsonify(ok=True), 200
             from dp_connect_bot.services.photo_vision import describe_photo, build_photo_message, _is_shelf_request
             desc = describe_photo(image_bytes, caption=caption)
@@ -86,7 +87,8 @@ def telegram_webhook():
                 run_invoice_check_flow(
                     lambda t: adapter._send_message(chat_id, t),
                     adapter.prefixed_chat_id(chat_id),
-                    file_bytes, "application/pdf", fname or "rechnung.pdf")
+                    file_bytes, "application/pdf", fname or "rechnung.pdf",
+                    send_link=lambda b, t, u: adapter._send_url_button(chat_id, b, t, u))
             else:
                 adapter._send_message(
                     chat_id,
