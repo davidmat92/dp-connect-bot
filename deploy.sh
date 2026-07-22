@@ -169,8 +169,16 @@ sleep 3
 HEALTH=$(curl -s "https://${PA_DOMAIN}/health" 2>/dev/null)
 if echo "$HEALTH" | grep -q "ok"; then
     echo "✅ Bot läuft! $HEALTH"
-    # Save current commit as last deployed
-    git rev-parse HEAD > .last_deploy
+    # Marker NUR setzen, wenn ALLE Uploads geklappt haben. Sonst hielte der
+    # nächste Lauf den Commit für deployt ("Keine Änderungen") und der Server
+    # bliebe auf einem INKONSISTENTEN Misch-Stand (alte+neue Dateien) —
+    # genau das hat am 2026-07-22 jede Kundennachricht crashen lassen.
+    if [ "${FAIL:-0}" -eq 0 ] && [ "${WP_FAIL:-0}" -eq 0 ]; then
+        git rev-parse HEAD > .last_deploy
+    else
+        echo "⚠️  Deploy-Marker NICHT gesetzt (${FAIL:-0} Bot- / ${WP_FAIL:-0} WP-Uploads fehlgeschlagen)."
+        echo "   → Einfach ./deploy.sh erneut ausführen, bis alle Dateien ✅ sind!"
+    fi
 else
     echo "⚠️  Health Check Response: $HEALTH"
 fi
