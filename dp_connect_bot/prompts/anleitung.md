@@ -30,6 +30,9 @@ Ich bin rund um die Uhr für dich da — so holst du das Meiste raus:
 • "Schick mir die Rechnung zur letzten Bestellung"
 • "Welche Rechnungen sind noch offen?" — dein Zahlstatus auf einen Blick
 
+🧾 *Preisvergleich* — schick mir die Rechnung eines anderen Großhändlers als Foto oder PDF:
+• Ich vergleiche jede Position mit unseren Preisen und zeige dir ehrlich, was du sparst
+
 💳 *Kasse* — sag einfach "Kasse" oder "bestellen":
 • Direkt hier im Chat abschließen (Rechnung oder Vorkasse)
 • Oder per Link im Browser — du wirst automatisch eingeloggt

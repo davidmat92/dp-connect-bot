@@ -45,6 +45,16 @@ def telegram_webhook():
             if not image_bytes:
                 adapter._send_message(chat_id, "Das Foto konnte ich gerade nicht laden. 😅 Probier's nochmal oder beschreib mir das Produkt!")
                 return jsonify(ok=True), 200
+            # Rechnungs-Check (Foto einer FREMD-Rechnung + Preisvergleichs-Caption)
+            # → deterministischer tools-Flow, KEINE KI dazwischen.
+            from dp_connect_bot.services.invoice_check import is_invoice_request, run_invoice_check_flow
+            if is_invoice_request(caption):
+                log.info(f"[TG:{chat_id}] Rechnungs-Check (Foto)")
+                run_invoice_check_flow(
+                    lambda t: adapter._send_message(chat_id, t),
+                    adapter.prefixed_chat_id(chat_id),
+                    image_bytes, "image/jpeg", "rechnung.jpg")
+                return jsonify(ok=True), 200
             from dp_connect_bot.services.photo_vision import describe_photo, build_photo_message, _is_shelf_request
             desc = describe_photo(image_bytes, caption=caption)
             if not desc:
@@ -57,6 +67,31 @@ def telegram_webhook():
             prefixed = adapter.prefixed_chat_id(chat_id)
             response = unified_handle_message(prefixed, text, user_info, channel="telegram")
             adapter.send_response(chat_id, response)
+
+        # --- Dokument: PDF = Rechnungs-Check (Preisvergleich), sonst Hinweis ---
+        elif message and message.get("document"):
+            chat_id = message["chat"]["id"]
+            doc = message["document"] or {}
+            fname = (doc.get("file_name") or "").strip()
+            dmime = (doc.get("mime_type") or "").lower()
+            if dmime == "application/pdf" or fname.lower().endswith(".pdf"):
+                log.info(f"[TG:{chat_id}] PDF empfangen ({fname or 'ohne Namen'}) → Rechnungs-Check")
+                file_bytes = _download_telegram_file(doc.get("file_id"))
+                if not file_bytes:
+                    adapter._send_message(chat_id, "Das PDF konnte ich gerade nicht laden. 😅 Probier's bitte nochmal!")
+                    return jsonify(ok=True), 200
+                from dp_connect_bot.services.invoice_check import run_invoice_check_flow
+                run_invoice_check_flow(
+                    lambda t: adapter._send_message(chat_id, t),
+                    adapter.prefixed_chat_id(chat_id),
+                    file_bytes, "application/pdf", fname or "rechnung.pdf")
+            else:
+                adapter._send_message(
+                    chat_id,
+                    "Dieses Dateiformat kann ich nicht direkt auswerten. 🙂 Schick mir Text, "
+                    "eine *Sprachnachricht*, ein *Foto* — oder eine Rechnung als *PDF*, "
+                    "dann mache ich dir einen Preisvergleich!",
+                )
 
         # --- Geteilter Kontakt (Nummer-teilen-Button → B2B-Verifizierung) ---
         elif message and message.get("contact"):

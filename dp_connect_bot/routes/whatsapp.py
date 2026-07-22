@@ -170,13 +170,13 @@ def whatsapp_webhook():
                     # Typen, die der Bot NICHT verarbeitet → ohne "tippt..." behandeln
                     # (sonst sieht der Kunde "tippt..." und es kommt nie eine Antwort).
                     mtype = msg.get("type")
-                    if mtype not in ("text", "interactive", "audio", "image"):
+                    if mtype not in ("text", "interactive", "audio", "image", "document"):
                         # Sticker/Reaktion → bewusst still (darauf antwortet man nicht).
                         # Aber AKTIV geschickter, nicht lesbarer Inhalt (Video — z.B. vom
-                        # Regal! —, Dokument, Standort, Kontakt) → kurz auf die nutzbaren
+                        # Regal! —, Standort, Kontakt) → kurz auf die nutzbaren
                         # Wege lenken, statt den Kunden ins Leere laufen zu lassen. Die
                         # msg-id ist oben bereits dedupt → kein Doppel-Hinweis bei Retry.
-                        if mtype in ("video", "document", "location", "contacts"):
+                        if mtype in ("video", "location", "contacts"):
                             adapter._send_message(
                                 phone,
                                 "Das kann ich hier leider nicht direkt auswerten. 🙂 Schick mir einfach "
@@ -246,6 +246,17 @@ def whatsapp_webhook():
                         if not image_bytes:
                             adapter._send_message(phone, "Das Foto konnte ich gerade nicht laden. 😅 Probier's nochmal oder beschreib mir das Produkt!")
                             continue
+                        # Rechnungs-Check (Foto einer FREMD-Rechnung + Preisvergleichs-
+                        # Caption) → deterministischer tools-Flow, KEINE KI. Hat Vorrang
+                        # vor Produkt-/Regal-Erkennung.
+                        from dp_connect_bot.services.invoice_check import is_invoice_request, run_invoice_check_flow
+                        if is_invoice_request(caption):
+                            log.info(f"[WA:{phone}] Rechnungs-Check (Foto)")
+                            run_invoice_check_flow(
+                                (lambda p: (lambda t: adapter._send_message(p, t)))(phone),
+                                adapter.prefixed_chat_id(phone),
+                                image_bytes, mime or "image/jpeg", "rechnung.jpg")
+                            continue
                         from dp_connect_bot.services.photo_vision import describe_photo, build_photo_message, _is_shelf_request, _is_order_request
                         is_shelf = _is_shelf_request(caption)
                         is_order = _is_order_request(caption)
@@ -264,6 +275,31 @@ def whatsapp_webhook():
                             from dp_connect_bot.services.shelf_inventory import save_scan
                             save_scan(adapter.prefixed_chat_id(phone), desc)
                         text = build_photo_message(desc, caption)
+
+                    # --- Dokument: PDF = Rechnungs-Check, andere Formate → Hinweis ---
+                    elif msg.get("type") == "document":
+                        doc = msg.get("document", {}) or {}
+                        fname = (doc.get("filename") or "").strip()
+                        dmime = (doc.get("mime_type") or "").lower()
+                        if dmime == "application/pdf" or fname.lower().endswith(".pdf"):
+                            log.info(f"[WA:{phone}] PDF empfangen ({fname or 'ohne Namen'}) → Rechnungs-Check")
+                            file_bytes, _dm = _download_whatsapp_media(doc.get("id"))
+                            if not file_bytes:
+                                adapter._send_message(phone, "Das PDF konnte ich gerade nicht laden. 😅 Probier's bitte nochmal!")
+                                continue
+                            from dp_connect_bot.services.invoice_check import run_invoice_check_flow
+                            run_invoice_check_flow(
+                                (lambda p: (lambda t: adapter._send_message(p, t)))(phone),
+                                adapter.prefixed_chat_id(phone),
+                                file_bytes, "application/pdf", fname or "rechnung.pdf")
+                            continue
+                        adapter._send_message(
+                            phone,
+                            "Dieses Dateiformat kann ich nicht direkt auswerten. 🙂 Schick mir Text, "
+                            "eine *Sprachnachricht*, ein *Foto* — oder eine Rechnung als *PDF*, "
+                            "dann mache ich dir einen Preisvergleich!",
+                        )
+                        continue
 
                     else:
                         continue  # skip stickers, etc.
