@@ -246,11 +246,14 @@ def whatsapp_webhook():
                         if not image_bytes:
                             adapter._send_message(phone, "Das Foto konnte ich gerade nicht laden. 😅 Probier's nochmal oder beschreib mir das Produkt!")
                             continue
-                        # Rechnungs-Check (Foto einer FREMD-Rechnung + Preisvergleichs-
-                        # Caption) → deterministischer tools-Flow, KEINE KI. Hat Vorrang
-                        # vor Produkt-/Regal-Erkennung.
-                        from dp_connect_bot.services.invoice_check import is_invoice_request, run_invoice_check_flow
-                        if is_invoice_request(caption):
+                        # Rechnungs-Check (Foto einer FREMD-Rechnung) → deterministischer
+                        # tools-Flow, KEINE KI. Trigger: eindeutige Preisvergleichs-Caption
+                        # ODER das Bild IST ein Dokument (Blitz-Vorklassifikation ~1-2s —
+                        # faengt auch "Hast du bessere Preise?"/Captions-lose Rechnungen).
+                        # Hat Vorrang vor Produkt-/Regal-Erkennung.
+                        from dp_connect_bot.services.invoice_check import (
+                            is_invoice_request, looks_like_document, run_invoice_check_flow)
+                        if is_invoice_request(caption) or looks_like_document(image_bytes, mime or "image/jpeg"):
                             log.info(f"[WA:{phone}] Rechnungs-Check (Foto)")
                             run_invoice_check_flow(
                                 (lambda p: (lambda t: adapter._send_message(p, t)))(phone),

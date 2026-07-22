@@ -45,10 +45,12 @@ def telegram_webhook():
             if not image_bytes:
                 adapter._send_message(chat_id, "Das Foto konnte ich gerade nicht laden. 😅 Probier's nochmal oder beschreib mir das Produkt!")
                 return jsonify(ok=True), 200
-            # Rechnungs-Check (Foto einer FREMD-Rechnung + Preisvergleichs-Caption)
-            # → deterministischer tools-Flow, KEINE KI dazwischen.
-            from dp_connect_bot.services.invoice_check import is_invoice_request, run_invoice_check_flow
-            if is_invoice_request(caption):
+            # Rechnungs-Check (Foto einer FREMD-Rechnung) → deterministischer tools-
+            # Flow, KEINE KI. Trigger: eindeutige Caption ODER Blitz-Vorklassifikation
+            # erkennt ein Dokument (faengt auch mehrdeutige/fehlende Captions).
+            from dp_connect_bot.services.invoice_check import (
+                is_invoice_request, looks_like_document, run_invoice_check_flow)
+            if is_invoice_request(caption) or looks_like_document(image_bytes, "image/jpeg"):
                 log.info(f"[TG:{chat_id}] Rechnungs-Check (Foto)")
                 run_invoice_check_flow(
                     lambda t: adapter._send_message(chat_id, t),

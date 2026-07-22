@@ -20,23 +20,69 @@ from dp_connect_bot.config import TOOLS_API_BASE, TOOLS_VERIFY_TOKEN, log
 
 _MAX_BYTES = 20 * 1024 * 1024   # tools-Limit: 20 MB
 
-# Caption-/Text-Hinweise, dass ein FOTO eine Rechnung zum Preisvergleich ist.
-# (Bei PDFs ist KEIN Keyword noetig — ein PDF im B2B-Chat ist praktisch immer
-# eine Rechnung; Nicht-Rechnungen beantwortet das tools-Backend ehrlich.)
+# EINDEUTIGE Caption-Hinweise auf einen Rechnungs-/Preisvergleich → direkt in den
+# Check, ohne Vorklassifikation. Bewusst ENG (kein bares "vergleich"/"preis" — das
+# kaeme auch bei Produktfotos vor); alles Mehrdeutige entscheidet
+# looks_like_document() am BILD selbst. (Bei PDFs ist gar kein Trigger noetig.)
 _INVOICE_KEYWORDS = (
     "rechnung", "invoice", "preisvergleich", "preis vergleich", "preise vergleichen",
-    "vergleich", "vergleiche", "vergleichen", "günstiger", "guenstiger", "billiger",
-    "konkurrenz", "großhändler", "grosshändler", "grosshaendler", "lieferant",
-    "mitbewerber", "sparen", "ersparnis", "was würdet ihr nehmen", "eure preise",
+    "günstiger", "guenstiger", "billiger", "konkurrenz", "großhändler",
+    "grosshändler", "grosshaendler", "lieferant", "mitbewerber", "sparen", "ersparnis",
 )
 
 
 def is_invoice_request(caption: str) -> bool:
-    """True, wenn die Bildunterschrift auf einen Rechnungs-/Preisvergleich deutet."""
+    """True, wenn die Bildunterschrift EINDEUTIG auf einen Rechnungs-/Preisvergleich
+    deutet. Mehrdeutige Captions ("Hast du bessere Preise?", "preis?") entscheidet
+    stattdessen looks_like_document() am Bild."""
     if not caption:
         return False
     low = caption.lower()
     return any(kw in low for kw in _INVOICE_KEYWORDS)
+
+
+def looks_like_document(image_bytes: bytes, media_type: str = "image/jpeg") -> bool:
+    """Blitz-Klassifikation per Vision (~1-2s, 10 Tokens): Zeigt das Foto ein
+    DOKUMENT (Rechnung/Lieferschein/Angebot/Preisliste) statt Produkten/Regal?
+    Laeuft fuer JEDES Kundenfoto vor der normalen Erkennung — so werden auch
+    Rechnungsfotos OHNE (eindeutige) Caption erkannt ("Hast du bessere Preise?").
+    Bei Fehlern/Unklarheit → False = normaler Foto-Flow (sicherer Default)."""
+    from dp_connect_bot.config import ANTHROPIC_API_KEY, CLAUDE_MODEL
+    if not ANTHROPIC_API_KEY or not image_bytes:
+        return False
+    try:
+        from dp_connect_bot.services.photo_vision import _downscale_for_vision, _MAX_IMAGE_BYTES
+        if len(image_bytes) > _MAX_IMAGE_BYTES:
+            scaled = _downscale_for_vision(image_bytes)
+            if not scaled:
+                return False
+            image_bytes, media_type = scaled, "image/jpeg"
+        import base64 as _b64
+        resp = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={"x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01",
+                     "content-type": "application/json"},
+            json={"model": CLAUDE_MODEL, "max_tokens": 10, "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "image", "source": {"type": "base64", "media_type": media_type,
+                                                 "data": _b64.standard_b64encode(image_bytes).decode()}},
+                    {"type": "text", "text": (
+                        "Zeigt dieses Foto ein DOKUMENT (Rechnung, Lieferschein, Angebot oder "
+                        "Preisliste — also Papier/Bildschirm mit Positionen und Preisen) oder "
+                        "etwas ANDERES (Produkte, Verpackungen, ein Regal)? "
+                        "Antworte mit GENAU einem Wort: DOKUMENT oder ANDERES.")},
+                ],
+            }]},
+            timeout=25,
+        )
+        resp.raise_for_status()
+        txt = "".join(b.get("text", "") for b in resp.json().get("content", [])
+                      if b.get("type") == "text").strip().upper()
+        return "DOKUMENT" in txt
+    except Exception as e:
+        log.error(f"invoice doc-classify fehlgeschlagen: {e}")
+        return False
 
 
 def check_invoice(file_bytes: bytes, media_type: str, filename: str, customer_ref: str) -> dict:
