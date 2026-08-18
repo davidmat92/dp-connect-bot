@@ -55,10 +55,13 @@ class WhatsAppAdapter(ChannelAdapter):
                 break
             elif kb.type == KeyboardType.MODE_CHOICE:
                 from dp_connect_bot.services.bot_config import channel_flag
+                # WhatsApp: max 3 Reply-Buttons. Rechnungs-Check (Preisvergleich) ist
+                # ein starkes Verkaufsargument → direkt anklickbar. Login-Hilfe bleibt
+                # ueber "Service" + Stichwort erreichbar (fuer Verifizierte irrelevant).
                 buttons = []
                 if channel_flag("whatsapp", "order_enabled"):
                     buttons.append({"label": "🛒 Bestellen", "callback": "mode_order"})
-                buttons.append({"label": "🔑 Login", "callback": "mode_login"})
+                buttons.append({"label": "🧾 Rechnungs-Check", "callback": "mode_invoicecheck"})
                 buttons.append({"label": "📞 Service", "callback": "mode_support"})
                 break
             elif kb.type == KeyboardType.CHAT_ORDER:

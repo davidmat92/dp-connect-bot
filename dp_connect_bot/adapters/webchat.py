@@ -85,6 +85,7 @@ class WebchatAdapter(ChannelAdapter):
             buttons = []
             if channel_flag("web", "order_enabled"):
                 buttons.append({"text": "🛒 Bestellen", "callback_data": "mode_order"})
+            buttons.append({"text": "🧾 Rechnungs-Check", "callback_data": "mode_invoicecheck"})
             buttons.append({"text": "🔑 Login-Probleme", "callback_data": "mode_login"})
             buttons.append({"text": "📞 Kundenservice", "callback_data": "mode_support"})
             return {"type": "mode_choice", "buttons": buttons}

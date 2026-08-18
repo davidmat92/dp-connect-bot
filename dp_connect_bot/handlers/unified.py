@@ -122,6 +122,20 @@ def unified_handle_message(chat_id, text, user_info=None, channel="telegram", wc
             if result.get("found"):
                 verif.mark_verified(session, result["customer"], chat_id=chat_id)
                 log.info(f"[{channel}:{chat_id}] Verifizierung selbstgeheilt (Kunde {result['customer'].get('id')})")
+        # Agenten-Status nachladen: Kontakte, die VOR der Agenten-Erkennung verifiziert
+        # wurden, haben kein `agent`-Feld im Store. Einmal pro Session (Flag) neu
+        # nachschauen — so werden auch Bestandskontakte als Agenten erkannt.
+        elif v and "agent" not in v and not session.get("agent_checked"):
+            session["agent_checked"] = True
+            try:
+                result = verif.lookup_phone(chat_id.replace("wa_", ""))
+                if result.get("found") and isinstance(result["customer"].get("agent"), dict):
+                    verif.mark_verified(session, result["customer"], chat_id=chat_id)
+                    log.info(f"[{channel}:{chat_id}] Agent erkannt: {result['customer']['agent'].get('code')}")
+                elif result.get("found"):
+                    v["agent"] = None  # geprueft, kein Agent → nicht erneut fragen
+            except Exception as e:
+                log.error(f"[{channel}:{chat_id}] Agent-Nachlookup fehlgeschlagen: {e}")
     if verif.enabled() and not session.get("verified"):
         # WhatsApp: verifizierte Absendernummer automatisch matchen (einmalig)
         if channel == "whatsapp" and not session.get("verify_phone_checked"):
@@ -576,6 +590,39 @@ def unified_handle_callback(chat_id, callback_data, channel="telegram"):
         return unified_handle_message(
             chat_id, "Leg mir bitte alle Artikel aus dem Rechnungs-Vergleich in den Warenkorb",
             channel=channel)
+
+    # Rechnungs-Check direkt aus dem Startmenue anklickbar. Der eigentliche Check
+    # startet automatisch, sobald ein Foto/PDF eintrifft (Bild-Vorklassifikation +
+    # PDF-Trigger) — hier nur einladen. Agenten bekommen den Agenten-Nutzen erklaert.
+    if callback_data == "mode_invoicecheck":
+        session["mode"] = "order"
+        session["human_mode"] = False
+        session["support_step"] = None
+        agent = (session.get("verified") or {}).get("agent") or {}
+        session_manager.save(chat_id, session)
+        if agent:
+            first = (agent.get("name") or "").split(" ")[0]
+            text = (
+                f"🧾 *Rechnungs-Check für deine Kunden*{', ' + first if first else ''}!\n\n"
+                "Schick mir einfach die Rechnung eines anderen Großhändlers als *Foto oder PDF* — "
+                "gern direkt vor Ort beim Kunden. Ich vergleiche jede Position mit unseren Preisen "
+                "und du bekommst:\n"
+                "• das ehrliche Fazit mit Ersparnis\n"
+                "• eine Ergebnisseite in *Agenten-Ansicht* mit allen Preisen\n"
+                "• den Button *'Kundenkonto für diesen Kunden eröffnen'* — die Registrierung wird "
+                "automatisch dir zugeordnet 👍\n\n"
+                "Los geht's — Foto oder PDF hier rein! 📸"
+            )
+        else:
+            text = (
+                "🧾 *Rechnungs-Check — bist du woanders günstiger dran?*\n\n"
+                "Schick mir die Rechnung eines anderen Großhändlers als *Foto oder PDF*. Ich "
+                "vergleiche jede Position mit unseren Preisen und zeige dir ehrlich, was du "
+                "bei uns sparst — mit PDF zum Weiterleiten und der Option, alles direkt in den "
+                "Warenkorb zu legen. 💪\n\n"
+                "Einfach Foto oder PDF hier rein! 📸"
+            )
+        return BotResponse(text=text, answer_callback_text="🧾 Rechnung schicken")
 
     if callback_data == "mode_order":
         session["mode"] = "order"

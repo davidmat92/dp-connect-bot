@@ -607,6 +607,13 @@ def call_claude(session, user_message, product_context="", wc_cart=None):
         v = session.get("verified") or {}
         who = ", ".join(x for x in [v.get("name"), v.get("firma")] if x)
         status_str = f"KUNDENSTATUS: VERIFIZIERTER B2B-KUNDE{' (' + who + ')' if who else ''}"
+        ag = v.get("agent") or {}
+        if ag:
+            status_str += (f" — ACHTUNG: dieser Kontakt ist ein DP-CONNECT-AGENT (Aussendienst/"
+                           f"Vertriebspartner, {ag.get('name') or ag.get('code')}). Er nutzt den Bot oft VOR ORT "
+                           "beim Kunden. Sprich ihn als Partner an, biete proaktiv den Rechnungs-Check "
+                           "(Foto/PDF der Fremd-Rechnung → Preisvergleich + Agenten-Ergebnisseite + "
+                           "'Kundenkonto fuer diesen Kunden eroeffnen') an, und hilf ihm, Kunden zu gewinnen.")
     else:
         status_str = ("KUNDENSTATUS: NICHT VERIFIZIERT (Interessenten-Modus) — "
                       "KEINE Preise nennen, kein Warenkorb/Checkout!")

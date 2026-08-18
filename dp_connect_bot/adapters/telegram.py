@@ -195,6 +195,9 @@ class TelegramAdapter(ChannelAdapter):
                         {"text": "🛒 Bestellen", "callback_data": "mode_order"},
                     ])
                 all_buttons.append([
+                    {"text": "🧾 Rechnungs-Check (Preisvergleich)", "callback_data": "mode_invoicecheck"},
+                ])
+                all_buttons.append([
                     {"text": "🔑 Login-Probleme", "callback_data": "mode_login"},
                 ])
                 all_buttons.append([

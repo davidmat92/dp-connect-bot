@@ -139,6 +139,12 @@ def mark_verified(session, customer: dict, chat_id: str = None):
         "firma": customer.get("firma", ""),
         "email": customer.get("email", ""),
     }
+    # AGENT (Aussendienst/Vertriebspartner)? tools liefert das im phone-lookup /
+    # check-code als `agent: {code, name}` mit (sonst null/fehlt). Damit kann der
+    # Bot Agenten von ANFANG an ansprechen (Rechnungs-Check-Button, Agenten-Kontext).
+    agent = customer.get("agent")
+    if isinstance(agent, dict) and agent.get("code"):
+        session["verified"]["agent"] = {"code": str(agent.get("code")), "name": str(agent.get("name") or "")}
     session.pop("verify_pending_email", None)
     if customer.get("name") and not session.get("customer_name"):
         session["customer_name"] = customer["name"]

@@ -221,6 +221,20 @@ def detect_mode(session, text, channel):
 
         name = session.get("customer_name", "")
         session["mode"] = "choosing"
+        # AGENTEN (Aussendienst) von Anfang an als solche ansprechen — mit dem
+        # Rechnungs-Check als Werkzeug fuer den Kundentermin.
+        agent = (session.get("verified") or {}).get("agent") or {}
+        if agent:
+            first = (agent.get("name") or name or "").split(" ")[0]
+            return BotResponse(
+                text=(f"Hey{' ' + first if first else ''}! 👋 Schön, dass du da bist — als *DP-Connect-Agent* "
+                      "hast du hier dein Werkzeug für den Kundentermin:\n\n"
+                      "🧾 *Rechnungs-Check*: Rechnung eines anderen Großhändlers als Foto/PDF schicken → "
+                      "Preisvergleich + Ergebnisseite in Agenten-Ansicht + Kundenkonto direkt eröffnen.\n"
+                      "🛒 Oder bestellen wie gewohnt.\n\n"
+                      f"Was darf's sein?{BETA_HINT}"),
+                keyboards=[Keyboard(type=KeyboardType.MODE_CHOICE)],
+            )
         return BotResponse(
             text=f"Hey{' ' + name if name else ''}! 👋\n\nWie kann ich dir helfen?{BETA_HINT}",
             keyboards=[Keyboard(type=KeyboardType.MODE_CHOICE)],
