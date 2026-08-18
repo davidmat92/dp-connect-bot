@@ -85,25 +85,38 @@ def looks_like_document(image_bytes: bytes, media_type: str = "image/jpeg") -> b
         return False
 
 
-def check_invoice(file_bytes: bytes, media_type: str, filename: str, customer_ref: str) -> dict:
+def check_invoice(file_bytes: bytes, media_type: str, filename: str, customer_ref: str,
+                  phone: str = "", wc_customer_id=None) -> dict:
     """Ruft den tools-Rechnungs-Check auf. Gibt die tools-Antwort zurueck oder
     {ok: False, error: ...}. Dauer 1-3 Minuten — Aufrufer muss vorher eine
-    Zwischennachricht senden."""
+    Zwischennachricht senden.
+
+    phone / wc_customer_id: tools erkennt darueber, ob der Absender ein AGENT ist
+    (→ Ergebnisseite mit Agenten-Ansicht + 'Kundenkonto eroeffnen'-CTA). Die
+    Erkennung passiert komplett in tools; agent_code kennt der Bot nicht (leer)."""
     if not TOOLS_VERIFY_TOKEN:
         return {"ok": False, "error": "not_configured"}
     if not file_bytes:
         return {"ok": False, "error": "empty"}
     if len(file_bytes) > _MAX_BYTES:
         return {"ok": False, "error": "too_large"}
+    body = {
+        "image_b64": base64.b64encode(file_bytes).decode(),
+        "media_type": media_type or "image/jpeg",
+        "filename": filename or "rechnung.jpg",
+        "customer_ref": str(customer_ref or ""),
+        "phone": str(phone or ""),
+        "agent_code": "",
+    }
+    if wc_customer_id:
+        try:
+            body["wc_customer_id"] = int(wc_customer_id)
+        except (ValueError, TypeError):
+            pass
     try:
         resp = requests.post(
             f"{TOOLS_API_BASE}/api/bot-invoice-check",
-            json={
-                "image_b64": base64.b64encode(file_bytes).decode(),
-                "media_type": media_type or "image/jpeg",
-                "filename": filename or "rechnung.jpg",
-                "customer_ref": str(customer_ref or ""),
-            },
+            json=body,
             headers={"X-Bot-Verify-Token": TOOLS_VERIFY_TOKEN,
                      "Content-Type": "application/json"},
             timeout=300,
@@ -141,7 +154,12 @@ def run_invoice_check_flow(send_text, prefixed_chat_id, file_bytes, media_type, 
     send_text("🧾 Ich schaue mir deine Rechnung an und vergleiche jede Position "
               "mit unseren Preisen — das dauert 1–2 Minuten ⏳")
 
-    res = check_invoice(file_bytes, media_type, filename, customer_ref)
+    # Absender-Nummer (WhatsApp: chat_id = wa_<nummer>) + ggf. bekannte WC-Kunden-ID
+    # mitgeben → tools erkennt Agenten und liefert die Agenten-Ergebnisseite.
+    phone = str(prefixed_chat_id)[3:] if str(prefixed_chat_id).startswith("wa_") else ""
+    phone = phone or verified.get("phone", "")
+    res = check_invoice(file_bytes, media_type, filename, customer_ref,
+                        phone=phone, wc_customer_id=verified.get("customer_id"))
 
     if not res.get("ok") or not res.get("summary_text"):
         if res.get("error") == "too_large":
@@ -167,15 +185,29 @@ def run_invoice_check_flow(send_text, prefixed_chat_id, file_bytes, media_type, 
         saving = 0.0
     cart_url = (res.get("cart_url") or "").strip()
     pdf_url = (res.get("pdf_url") or "").strip()
+    result_url = (res.get("result_url") or "").strip()
+    agent = res.get("agent") if isinstance(res.get("agent"), dict) else None
 
-    # Follow-ups:
-    # 1) brandiertes Vergleichs-PDF IMMER anbieten (auch ohne Sparpotenzial) —
-    #    URL VERBATIM aus der tools-Antwort (nie durchs Sprachmodell).
+    # Follow-ups (alle URLs VERBATIM aus der tools-Antwort — nie durchs Sprachmodell,
+    # ein verfaelschter Buchstabe im 16-Hex-Token = 'Ungueltiger Link'):
+    # 0) Ergebnisseite online — bei AGENTEN mit Agenten-Ansicht + CTA
+    #    'Kundenkonto fuer diesen Kunden eroeffnen' (?ref=<agent_code>, tools-seitig).
+    # 1) brandiertes Vergleichs-PDF IMMER anbieten (auch ohne Sparpotenzial).
     # 2) bei Ersparnis: CHAT-Button 'In den Warenkorb' — legt die Artikel im
     #    Bot-Warenkorb (unverifizierte werden dabei kurz verifiziert; KEIN
     #    kunde-werden-Link, der bringt hier nichts). Verifizierte mit cart_url
     #    bekommen zusaetzlich den Shop-Warenkorb-Link als Button.
     followup_lines = []
+    if result_url:
+        if agent:
+            r_body = "👉 Ergebnis mit allen Preisen (Agenten-Ansicht) + Kundenkonto direkt eröffnen:"
+            r_title = "Ergebnis öffnen"
+        else:
+            r_body = "👉 Ergebnis online ansehen:"
+            r_title = "Ergebnis ansehen"
+        followup_lines.append(f"{r_body} {result_url}")
+        if not (send_link and send_link(r_body, r_title, result_url)):
+            send_text(f"{r_body}\n{result_url}")
     if pdf_url:
         followup_lines.append(f"📄 Dein Vergleich als PDF: {pdf_url}")
         if not (send_link and send_link("📄 Dein Vergleich als PDF:", "PDF öffnen", pdf_url)):
