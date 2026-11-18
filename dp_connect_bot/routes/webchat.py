@@ -218,6 +218,12 @@ def webchat_init():
             if wp_user_id:
                 log.warning(f"[webchat_init] wp_user_id={wp_user_id} OHNE gueltige Signatur → Gast (enforce AN)")
             session["is_guest"] = True
+            # Frueheren Login-Status der Session verwerfen (sonst bliebe B2B nach
+            # ungueltiger Signatur bzw. Logout stehen). Echte E-Mail-/Telefon-
+            # Verifizierungen stellt unified.py aus dem Verifizierungs-Speicher wieder her.
+            session.pop("verified", None)
+            for key in ("wp_user_id", "wp_display_name", "wp_email", "wp_username"):
+                session.get("user_info", {}).pop(key, None)
 
         session_manager.save(chat_id, session)
 

@@ -236,3 +236,31 @@ def test_fetch_whois_ohne_secret_kein_call(monkeypatch):
     monkeypatch.setattr(woocommerce, "WP_BOT_SECRET", "")
     monkeypatch.setattr(woocommerce.requests, "post", lambda *a, **k: pytest.fail("kein Call erwartet"))
     assert woocommerce.fetch_whois(3) is None
+
+
+# --- Fix alter Weg: ungueltige Signatur verwirft frueheren Status --------------
+
+def _wp_sig(uid, email, ts, secret="wp-test-secret"):
+    return f"{ts}." + hmac.new(secret.encode(), f"{uid}|{email}|{ts}".encode(), hashlib.sha256).hexdigest()
+
+
+@pytest.fixture
+def wp_enforce(monkeypatch):
+    from dp_connect_bot.services import bot_config
+    monkeypatch.setattr(webchat, "WP_BOT_SECRET", "wp-test-secret")
+    monkeypatch.setattr(bot_config, "load_bot_config", lambda: {"webchat_require_signed_auth": True})
+
+
+def test_alter_weg_ungueltige_signatur_nicht_mehr_verified(client, wp_enforce):
+    init(client, wp_user_id=7, wp_email="a@b.test", wp_auth=_wp_sig(7, "a@b.test", TS))
+    _, s = init(client, wp_user_id=7, wp_email="a@b.test", wp_auth=f"{TS}.{'0' * 64}")
+    assert s["is_guest"] is True
+    assert "verified" not in s
+    assert "wp_email" not in s.get("user_info", {})
+
+
+def test_alter_weg_logout_nicht_mehr_verified(client, wp_enforce):
+    init(client, wp_user_id=7, wp_email="a@b.test", wp_auth=_wp_sig(7, "a@b.test", TS))
+    _, s = init(client)  # gleicher Browser, ausgeloggt
+    assert s["is_guest"] is True
+    assert "verified" not in s
