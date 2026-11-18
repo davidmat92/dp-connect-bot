@@ -2,6 +2,8 @@
 DP Connect Bot – Flask App Factory
 """
 
+from urllib.parse import urlparse
+
 from flask import Flask, request
 
 from dp_connect_bot.config import ALLOWED_ORIGINS, SESSION_FILE, log
@@ -11,19 +13,40 @@ from dp_connect_bot.services.history import init_history_db
 from dp_connect_bot.services.restock_watch import check_and_notify
 
 
-def create_app():
-    """Create and configure the Flask application."""
-    app = Flask(__name__)
+def _origin_allowed(origin: str) -> bool:
+    """Exakter Origin-Vergleich. Frueher startswith → auch
+    'https://dpconnect.de.fremd.example' galt als erlaubt. localhost darf
+    jeden Port haben (lokale Entwicklung)."""
+    if not origin:
+        return False
+    if origin in ALLOWED_ORIGINS:
+        return True
+    try:
+        u = urlparse(origin)
+    except ValueError:
+        return False
+    if u.hostname == "localhost" and not u.path and not u.query and not u.username:
+        return f"{u.scheme}://localhost" in ALLOWED_ORIGINS
+    return False
 
-    # --- CORS Middleware ---
+
+def register_cors(app):
+    """CORS-Middleware: nur exakt erlaubte Origins bekommen die Header."""
     @app.after_request
     def add_cors_headers(response):
         origin = request.headers.get("Origin", "")
-        if any(origin.startswith(a) for a in ALLOWED_ORIGINS):
+        if _origin_allowed(origin):
             response.headers["Access-Control-Allow-Origin"] = origin
             response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
             response.headers["Access-Control-Allow-Methods"] = "POST, GET, OPTIONS"
         return response
+
+
+def create_app():
+    """Create and configure the Flask application."""
+    app = Flask(__name__)
+
+    register_cors(app)
 
     # Register blueprints
     from dp_connect_bot.routes.telegram import telegram_bp

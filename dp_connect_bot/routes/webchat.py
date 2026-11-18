@@ -4,7 +4,7 @@ import time
 
 from flask import Blueprint, request, jsonify
 
-from dp_connect_bot.config import BETA_HINT_PLAIN, WP_BOT_SECRET, log
+from dp_connect_bot.config import BETA_HINT_PLAIN, V3_BOT_SECRET, WP_BOT_SECRET, log
 from dp_connect_bot.handlers.unified import unified_handle_message, unified_handle_callback
 from dp_connect_bot.adapters.webchat import WebchatAdapter
 from dp_connect_bot.models.session import session_manager
@@ -32,6 +32,83 @@ def _validate_webchat_auth(uid, email, auth) -> bool:
     payload = f"{uid}|{email}|{ts}"
     expected = hmac.new(WP_BOT_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, sig)
+
+
+V3_AUTH_MAX_AGE = 300  # Sekunden; Next stellt das Token erst beim Oeffnen des Fensters aus
+
+
+def _validate_v3_auth(uid, auth, secret=None, now=None) -> bool:
+    """Prueft das Kurz-Token des v3-Chat-Fensters (Shop-Neubau).
+
+    Format 'v3.<uid>.<ts>.<sig>', sig = hex(HMAC-SHA256(V3_BOT_SECRET, 'v3|<uid>|<ts>')),
+    max. 5 Min alt (beide Richtungen). Die uid im Token muss mit der gemeldeten
+    wp_user_id uebereinstimmen. Leeres Secret → nie gueltig.
+    """
+    secret = V3_BOT_SECRET if secret is None else secret
+    if not secret or not isinstance(auth, str):
+        return False
+    parts = auth.split(".")
+    if len(parts) != 4 or parts[0] != "v3":
+        return False
+    _, uid_str, ts_str, sig = parts
+    # Kanonische Ganzzahlen (keine Vorzeichen/fuehrenden Nullen), sonst waere die
+    # signierte Zeichenkette mehrdeutig.
+    if not (uid_str.isdigit() and ts_str.isdigit()) or uid_str != str(int(uid_str)) or ts_str != str(int(ts_str)):
+        return False
+    if int(uid_str) <= 0 or str(uid).strip() != uid_str:
+        return False
+    if len(sig) != 64:
+        return False
+    now = time.time() if now is None else now
+    if abs(now - int(ts_str)) > V3_AUTH_MAX_AGE:
+        return False
+    expected = hmac.new(secret.encode(), f"v3|{uid_str}|{ts_str}".encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, sig.lower())
+
+
+def _init_v3_identity(chat_id, session, data):
+    """Identitaet fuer das v3-Fenster: nur uid + v3_auth, Name/E-Mail per whois.
+
+    Immer scharf (keine Uebergangsphase): ungueltig → Gast, frueherer
+    Verifizierungsstatus der Session wird verworfen.
+    """
+    session["client"] = "v3"
+    wp_user_id = data.get("wp_user_id")
+    auth_ok = bool(wp_user_id) and _validate_v3_auth(wp_user_id, data.get("v3_auth"))
+
+    if wp_user_id:
+        from dp_connect_bot.services.history import track_event
+        track_event("webchat_auth", chat_id, "web", f"v3 uid={wp_user_id} valid={int(auth_ok)}")
+
+    if not auth_ok:
+        if wp_user_id:
+            log.warning(f"[webchat_init] v3 uid={wp_user_id} OHNE gueltiges Token → Gast")
+        session["is_guest"] = True
+        session.pop("verified", None)
+        for key in ("wp_user_id", "wp_display_name", "wp_email", "wp_username"):
+            session.get("user_info", {}).pop(key, None)
+        return
+
+    uid = int(wp_user_id)
+    from dp_connect_bot.services.woocommerce import fetch_whois
+    who = fetch_whois(uid) or {}
+    if not who:
+        log.warning(f"[webchat_init] v3 uid={uid}: whois ohne Ergebnis → verifiziert ohne Name/E-Mail")
+    session["is_guest"] = False
+    session.setdefault("user_info", {}).update({
+        "wp_user_id": uid,
+        "wp_display_name": who.get("name", ""),
+        "wp_email": who.get("email", ""),
+        "wp_username": "",
+    })
+    if who.get("name"):
+        session["customer_name"] = who["name"]
+    session["verified"] = {
+        "customer_id": uid,
+        "name": who.get("name", ""),
+        "firma": who.get("firma", ""),
+        "email": who.get("email", ""),
+    }
 
 
 def _prepend_pending_admin(chat_id, result):
@@ -67,6 +144,15 @@ def _init_flood(ip: str, limit: int = 50, window: int = 3600) -> bool:
     return len(hits) > limit
 
 
+def _welcome(session):
+    name = session.get("customer_name", "")
+    return (
+        f"Hey{' ' + name if name else ''}! 👋\n\n"
+        f"Ich bin dein DP Connect Bestell-Assistent.\n\n"
+        f"Sag mir einfach was du brauchst – ich find's für dich!{BETA_HINT_PLAIN}"
+    )
+
+
 @webchat_bp.route("/chat/init", methods=["POST", "OPTIONS"])
 def webchat_init():
     if request.method == "OPTIONS":
@@ -85,6 +171,11 @@ def webchat_init():
 
         if data.get("customer_name"):
             session["customer_name"] = data["customer_name"]
+
+        if data.get("client") == "v3" or data.get("v3_auth"):
+            _init_v3_identity(chat_id, session, data)
+            session_manager.save(chat_id, session)
+            return jsonify(ok=True, chat_id=chat_id, message=_welcome(session))
 
         wp_user_id = data.get("wp_user_id")
         # SICHERHEIT: clientseitige wp_user_id darf NUR mit gueltiger HMAC-Signatur
@@ -130,13 +221,7 @@ def webchat_init():
 
         session_manager.save(chat_id, session)
 
-        name = session.get("customer_name", "")
-        welcome = (
-            f"Hey{' ' + name if name else ''}! 👋\n\n"
-            f"Ich bin dein DP Connect Bestell-Assistent.\n\n"
-            f"Sag mir einfach was du brauchst – ich find's für dich!{BETA_HINT_PLAIN}"
-        )
-        return jsonify(ok=True, chat_id=chat_id, message=welcome)
+        return jsonify(ok=True, chat_id=chat_id, message=_welcome(session))
     except Exception as e:
         log.error(f"[webchat_init] Error: {e}")
         return jsonify(ok=False, error="Internal error"), 500

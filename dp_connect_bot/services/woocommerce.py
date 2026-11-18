@@ -294,6 +294,38 @@ class WooCommerceClient:
 wc_client = WooCommerceClient()
 
 
+def fetch_whois(uid):
+    """Shop-Neubau v3: Name/E-Mail/Firma zu einer WP-User-ID, Server zu Server.
+
+    Das v3-Chat-Fenster schickt nur uid + signiertes Kurz-Token, keine
+    Kundendaten. WP-Route dp/v1/bot/whois (Snippet dp-bot-rest, X-Bot-Secret).
+    Gibt {name, email, firma} oder None (unbekannt/Fehler) zurueck.
+    """
+    if not WP_BOT_SECRET:
+        return None
+    try:
+        resp = requests.post(
+            f"{WOOCOMMERCE_URL}/wp-json/dp/v1/bot/whois",
+            json={"uid": int(uid)},
+            headers={"X-Bot-Secret": WP_BOT_SECRET, "Content-Type": "application/json"},
+            timeout=8,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            if str(data.get("uid")) == str(uid):
+                return {
+                    "name": str(data.get("name") or ""),
+                    "email": str(data.get("email") or ""),
+                    "firma": str(data.get("firma") or ""),
+                }
+            log.warning("whois: uid in der Antwort passt nicht")
+            return None
+        log.warning(f"whois: HTTP {resp.status_code}")
+    except Exception as e:
+        log.error(f"whois fehlgeschlagen: {e}")
+    return None
+
+
 def request_checkout_token(email, cart):
     """Holt einen Magic-Checkout-Link von WordPress (Einmal-Token, 15 Min).
 

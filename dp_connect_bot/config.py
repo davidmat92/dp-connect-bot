@@ -25,6 +25,10 @@ WOOCOMMERCE_URL = os.environ.get("WOOCOMMERCE_URL", "https://dpconnect.de")
 WC_CONSUMER_KEY = os.environ.get("WC_CONSUMER_KEY", "")
 WC_CONSUMER_SECRET = os.environ.get("WC_CONSUMER_SECRET", "")
 WP_BOT_SECRET = os.environ.get("WP_BOT_SECRET", "")
+# Shop-Neubau v3: eigenes Secret fuer das Kurz-Token des Chat-Fensters (v3_auth).
+# Bewusst getrennt von WP_BOT_SECRET (getrennt drehbar, Leck oeffnet keinen Magic-Checkout).
+# Leer = v3_auth wird nie akzeptiert (Kunde bleibt Gast).
+V3_BOT_SECRET = os.environ.get("V3_BOT_SECRET", "")
 
 # WhatsApp Config
 WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "")
@@ -75,7 +79,14 @@ SESSION_FILE = os.path.join(_BASE_DIR, "sessions.json")  # Legacy, for migration
 PRODUCT_SNAPSHOT_PATH = os.path.join(_BASE_DIR, "products_snapshot.json")
 
 # CORS
-ALLOWED_ORIGINS = ["https://dpconnect.de", "https://www.dpconnect.de", "http://localhost"]
+# Exakter Vergleich (kein Praefix!), sonst gaelte auch https://dpconnect.de.fremd.example.
+# localhost ist mit beliebigem Port erlaubt (siehe app._origin_allowed).
+ALLOWED_ORIGINS = [
+    "https://dpconnect.de",
+    "https://www.dpconnect.de",
+    "https://v3.dpconnect.de",  # Shop-Neubau bis zum Start
+    "http://localhost",
+]
 
 # ============================================================
 # WORD SETS
